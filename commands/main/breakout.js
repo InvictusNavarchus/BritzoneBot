@@ -44,6 +44,12 @@ export default {
             .setRequired(true)
             .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice)
         )
+        .addStringOption(option =>
+          option
+            .setName("facilitators")
+            .setDescription("Users to keep in the main room (mention them with @)")
+            .setRequired(false)
+        )
     )
     // End subcommand
     .addSubcommand(subcommand =>
@@ -139,11 +145,21 @@ async function handleCreateCommand(interaction) {
  */
 async function handleDistributeCommand(interaction) {
   await safeReply(interaction, async () => {
-    // Get the main room from options
     const mainRoom = interaction.options.getChannel('mainroom');
+    const facilitatorsInput = interaction.options.getString('facilitators');
     console.log(`🎯 Main room selected: ${mainRoom.name}`);
     
-    // Get breakout rooms from the manager
+    // Process facilitators if provided
+    const facilitators = new Set();
+    if (facilitatorsInput) {
+      const mentionPattern = /<@!?(\d+)>/g;
+      let match;
+      while ((match = mentionPattern.exec(facilitatorsInput)) !== null) {
+        facilitators.add(match[1]);
+      }
+      console.log(`👥 Facilitators identified: ${facilitators.size}`);
+    }
+
     const breakoutRooms = breakoutRoomManager.getRooms(interaction.guildId);
     
     if (breakoutRooms.length === 0) {
@@ -151,18 +167,19 @@ async function handleDistributeCommand(interaction) {
       return interaction.safeSend('No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
     }
     
-    // Get users in the main room
-    console.log(`🔍 Getting users from main room: ${mainRoom.name}`);
     const usersInMainRoom = mainRoom.members;
     
     if (usersInMainRoom.size === 0) {
       console.log(`⚠️ No users found in ${mainRoom.name}`);
       return interaction.safeSend(`There are no users in ${mainRoom.name}.`);
     }
+
+    // Filter out facilitators before distribution
+    const usersToDistribute = Array.from(usersInMainRoom.values())
+      .filter(member => !facilitators.has(member.user.id));
     
-    // Distribute users among breakout rooms
-    console.log(`🧩 Distributing ${usersInMainRoom.size} users among ${breakoutRooms.length} breakout rooms`);
-    const distribution = distributeUsers(usersInMainRoom, breakoutRooms);
+    console.log(`🧩 Distributing ${usersToDistribute.length} users among ${breakoutRooms.length} breakout rooms (excluding ${facilitators.size} facilitators)`);
+    const distribution = distributeUsers(usersToDistribute, breakoutRooms);
     
     // Use the recovery-compatible distribute function
     const result = await distributeToBreakoutRooms(interaction, mainRoom, distribution);

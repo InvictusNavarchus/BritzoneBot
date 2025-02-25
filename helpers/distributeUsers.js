@@ -1,6 +1,6 @@
 /**
  * Distribute users among breakout rooms
- * @param {Array<import('discord.js').GuildMember>} users - Array of users to distribute
+ * @param {Array<import('discord.js').GuildMember>} users - Array of users to distribute (excluding facilitators)
  * @param {Array<import('discord.js').VoiceChannel|import('discord.js').StageChannel>} breakoutRooms - Array of breakout room channels
  * @returns {Object} Mapping of breakout room IDs to arrays of users
  */

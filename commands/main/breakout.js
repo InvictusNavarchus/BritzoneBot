@@ -153,8 +153,8 @@ async function handleDistributeCommand(interaction) {
     const facilitators = new Set();
     if (facilitatorsInput) {
       const mentionPattern = /<@!?(\d+)>/g;
-      let match;
-      while ((match = mentionPattern.exec(facilitatorsInput)) !== null) {
+      const matches = facilitatorsInput.matchAll(mentionPattern);
+      for (const match of matches) {
         facilitators.add(match[1]);
       }
       console.log(`👥 Facilitators identified: ${facilitators.size}`);

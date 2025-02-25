@@ -46,7 +46,7 @@ async function deployCommands(GUILD_NAME, GUILD_ID) {
             { body: commands },
         );
 
-        console.log(`Successfully reloaded ${data.length} application (/) commands.`);
+        console.log(`✅ Successfully reloaded ${data.length} application (/) commands on ${GUILD_NAME} (${GUILD_ID}).`);
     } catch (error) {
         // And of course, make sure you catch and log any errors!
         console.error(error);

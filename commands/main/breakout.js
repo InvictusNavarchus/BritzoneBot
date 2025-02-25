@@ -198,6 +198,21 @@ async function handleDistributeCommand(interaction) {
       .setDescription(`Split users from ${mainRoom.name} into ${breakoutRooms.length} breakout rooms.`)
       .setTimestamp();
     
+    // Add facilitators field if any exist
+    if (facilitators.size > 0) {
+      const facilitatorUsers = Array.from(usersInMainRoom.values())
+        .filter(member => facilitators.has(member.user.id))
+        .map(member => member.user.tag)
+        .join('\n');
+      
+      embed.addFields({
+        name: '👥 Facilitators (staying in main room)',
+        value: facilitatorUsers || 'None',
+        inline: false
+      });
+      console.log(`📊 Added ${facilitators.size} facilitators to embed`);
+    }
+    
     // Add fields for each breakout room
     breakoutRooms.forEach(room => {
       const usersInRoom = distribution[room.id]?.map(u => u.user.tag).join('\n') || 'No users assigned';

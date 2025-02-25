@@ -1,10 +1,18 @@
-import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder } from "discord.js";
+import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, CommandInteraction } from "discord.js";
 import safeReply from "../../helpers/safeReply.js";
 import isAdmin from "../../helpers/isAdmin.js";
 import distributeUsers from "../../helpers/distributeUsers.js";
 import breakoutRoomManager from "../../helpers/breakoutRoomManager.js";
 import { createBreakoutRooms, distributeToBreakoutRooms, endBreakoutSession } from "../../helpers/breakoutOperations.js";
 import stateManager from "../../helpers/breakoutStateManager.js";
+
+/**
+ * @typedef {Object} OperationResult
+ * @property {boolean} success - Whether the operation succeeded
+ * @property {string} message - Result message
+ * @property {Object} [moveResults] - Optional results from move operations
+ * @property {string[]} [moveResults.failed] - Array of failed move operations
+ */
 
 export default {
   data: new SlashCommandBuilder()
@@ -51,6 +59,11 @@ export default {
         )
     ),
 
+  /**
+   * Executes the breakout command
+   * @param {CommandInteraction} interaction - The Discord interaction
+   * @returns {Promise<void>}
+   */
   async execute(interaction) {
     console.log(`🚀 Breakout command initiated by ${interaction.user.tag}`);
     
@@ -88,7 +101,9 @@ export default {
 };
 
 /**
- * Handles the create subcommand
+ * Handles the create subcommand for breakout rooms
+ * @param {CommandInteraction} interaction - The Discord interaction
+ * @returns {Promise<void>}
  */
 async function handleCreateCommand(interaction) {
   await safeReply(interaction, async () => {
@@ -118,7 +133,9 @@ async function handleCreateCommand(interaction) {
 }
 
 /**
- * Handles the distribute subcommand
+ * Handles the distribute subcommand for breakout rooms
+ * @param {CommandInteraction} interaction - The Discord interaction
+ * @returns {Promise<void>}
  */
 async function handleDistributeCommand(interaction) {
   await safeReply(interaction, async () => {
@@ -191,7 +208,9 @@ async function handleDistributeCommand(interaction) {
 }
 
 /**
- * Handles the end subcommand
+ * Handles the end subcommand for breakout rooms
+ * @param {CommandInteraction} interaction - The Discord interaction
+ * @returns {Promise<void>}
  */
 async function handleEndCommand(interaction) {
   await safeReply(

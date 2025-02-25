@@ -1,14 +1,22 @@
 /**
- * Simple in-memory storage for tracking breakout rooms per guild
+ * @typedef {Object} BreakoutSession
+ * @property {import('discord.js').VoiceChannel[]} rooms - Array of breakout room channels
+ * @property {import('discord.js').VoiceChannel} mainRoom - The main voice channel
+ */
+
+/**
+ * Manages breakout room sessions for Discord guilds
  */
 class BreakoutRoomManager {
   constructor() {
-    // Map structure: guildId -> { rooms: [channel objects], mainRoom: channelObject }
+    /** @type {Map<string, BreakoutSession>} */
     this.sessions = new Map();
   }
 
   /**
    * Stores breakout rooms for a guild
+   * @param {string} guildId - The Discord guild ID
+   * @param {import('discord.js').VoiceChannel[]} rooms - Array of voice channels
    */
   storeRooms(guildId, rooms) {
     const session = this.sessions.get(guildId) || {};
@@ -19,6 +27,8 @@ class BreakoutRoomManager {
 
   /**
    * Sets the main room for a guild's breakout session
+   * @param {string} guildId - The Discord guild ID
+   * @param {import('discord.js').VoiceChannel} mainRoom - The main voice channel
    */
   setMainRoom(guildId, mainRoom) {
     const session = this.sessions.get(guildId) || {};
@@ -29,6 +39,8 @@ class BreakoutRoomManager {
 
   /**
    * Gets the breakout rooms for a guild
+   * @param {string} guildId - The Discord guild ID
+   * @returns {import('discord.js').VoiceChannel[]} Array of voice channels or empty array
    */
   getRooms(guildId) {
     const session = this.sessions.get(guildId);
@@ -37,6 +49,8 @@ class BreakoutRoomManager {
 
   /**
    * Gets the main room for a guild
+   * @param {string} guildId - The Discord guild ID
+   * @returns {import('discord.js').VoiceChannel|undefined} The main voice channel or undefined
    */
   getMainRoom(guildId) {
     const session = this.sessions.get(guildId);
@@ -45,6 +59,7 @@ class BreakoutRoomManager {
 
   /**
    * Clears session data for a guild
+   * @param {string} guildId - The Discord guild ID
    */
   clearSession(guildId) {
     this.sessions.delete(guildId);

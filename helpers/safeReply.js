@@ -13,21 +13,61 @@ async function safeReply(interaction, handler, options = {}) {
     // If deferReply is true, try to defer the reply first
     if (deferReply && !interaction.replied && !interaction.deferred) {
       try {
-        await interaction.deferReply({ ephemeral });
+        // Set a timeout to avoid getting stuck on network issues
+        const deferPromise = interaction.deferReply({ ephemeral });
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Defer reply timeout')), 2500)
+        );
+        
+        await Promise.race([deferPromise, timeoutPromise]);
         console.log(`🔄 Successfully deferred interaction ${interaction.id}`);
       } catch (deferError) {
-        // If we can't defer, the interaction likely expired
+        // If we can't defer, the interaction likely expired or network issue occurred
         if (deferError.code === 10062) {
           console.log(`⏱️ Interaction ${interaction.id} expired before deferring`);
           return false;
         }
-        throw deferError; // Re-throw unexpected errors
+        
+        // Handle network errors gracefully
+        if (deferError.code === 'EAI_AGAIN' || deferError.message === 'Defer reply timeout') {
+          console.log(`🌐 Network issue while deferring interaction ${interaction.id}: ${deferError.message}`);
+          return false;
+        }
+        
+        console.log(`❓ Unknown error while deferring interaction: ${deferError.message}`);
+        return false;
       }
     }
 
-    // Execute the handler function
-    await handler();
-    return true;
+    // Execute the handler function with timeout protection
+    try {
+      const handlerPromise = handler();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Handler execution timeout')), 8000)
+      );
+      
+      await Promise.race([handlerPromise, timeoutPromise]);
+      return true;
+    } catch (handlerError) {
+      // Handle network errors in the command execution
+      if (handlerError.code === 'EAI_AGAIN' || handlerError.message === 'Handler execution timeout') {
+        console.error(`🌐 Network error during command execution: ${handlerError.message}`);
+        
+        // Try to notify the user if the connection is back
+        try {
+          if (interaction.deferred && !interaction.replied) {
+            await interaction.editReply({ content: "Network connectivity issue. Please try again later." });
+          }
+        } catch (notifyError) {
+          console.log(`⚠️ Couldn't notify user of network error: ${notifyError.message}`);
+        }
+        
+        return false;
+      }
+      
+      // Re-throw other errors to be caught by the outer try/catch
+      throw handlerError;
+    }
   } catch (error) {
     // Handle expired interactions gracefully
     if (error.code === 10062) {

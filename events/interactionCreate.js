@@ -5,10 +5,22 @@ import safeReply from '../helpers/safeReply.js';
 function patchInteraction(interaction) {
   // Add safeSend method that handles the interaction state
   interaction.safeSend = async function(options) {
-    if (this.deferred || this.replied) {
-      return this.editReply(options);
-    } else {
-      return this.reply(options);
+    try {
+      if (this.deferred || this.replied) {
+        return this.editReply(options);
+      } else {
+        return this.reply(options);
+      }
+    } catch (error) {
+      if (error.code === 10062) {
+        console.log(`⏱️ Interaction ${this.id} expired while trying to send a response`);
+        return null;
+      }
+      if (error.code === 'EAI_AGAIN') {
+        console.log(`🌐 Network issue while responding to interaction ${this.id}: ${error.message}`);
+        return null;
+      }
+      throw error;
     }
   };
   return interaction;
@@ -29,8 +41,9 @@ export default {
     // Enhance the interaction with our safeSend method
     patchInteraction(interaction);
 
-    // Complex commands need deferReply (like breakout)
-    const needsDefer = command.data.name === 'breakout';
+    // Determine if the command is complex and should be deferred
+    // Almost all commands that make API requests should be deferred
+    const needsDefer = ['breakout', 'create-breakout-rooms', 'end-breakout-rooms'].includes(command.data.name);
 
     // Use safeReply helper with appropriate options
     await safeReply(interaction, async () => {

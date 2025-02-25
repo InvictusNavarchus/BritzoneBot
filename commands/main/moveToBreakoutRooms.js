@@ -16,27 +16,27 @@ export default {
         .setRequired(true)
         .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice))
     .addChannelOption(option => 
-      option.setName('breakoutroom1')
+      option.setName('breakout-room-1')
         .setDescription('First breakout room')
         .setRequired(true)
         .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice))
     .addChannelOption(option => 
-      option.setName('breakoutroom2')
+      option.setName('breakout-room-2')
         .setDescription('Second breakout room')
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice))
     .addChannelOption(option => 
-      option.setName('breakoutroom3')
+      option.setName('breakout-room-3')
         .setDescription('Third breakout room')
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice))
     .addChannelOption(option => 
-      option.setName('breakoutroom4')
+      option.setName('breakout-room-4')
         .setDescription('Fourth breakout room')
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice))
     .addChannelOption(option => 
-      option.setName('breakoutroom5')
+      option.setName('breakout-room-5')
         .setDescription('Fifth breakout room')
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice)),

@@ -66,6 +66,7 @@ Creates multiple breakout voice channels.
 Distributes users from a main voice channel into breakout rooms.
 
 - **mainroom**: The main voice channel where members are currently located (required).
+- **facilitators**: List of users to be assigned as facilitators in each breakout room (optional).
 
 #### `/breakout end`
 

@@ -71,7 +71,7 @@ export default {
       
       if (breakoutRooms.length === 0) {
         console.log(`❌ Error: No breakout rooms provided`);
-        return interaction.editReply('You must provide at least one breakout room.');
+        return interaction.safeSend('You must provide at least one breakout room.');
       }
       
       // Get users in the main room
@@ -80,7 +80,7 @@ export default {
       
       if (usersInMainRoom.size === 0) {
         console.log(`⚠️ No users found in ${mainRoom.name}`);
-        return interaction.editReply(`There are no users in ${mainRoom.name}.`);
+        return interaction.safeSend(`There are no users in ${mainRoom.name}.`);
       }
       
       // Distribute users among breakout rooms
@@ -149,7 +149,7 @@ export default {
       }
       
       console.log(`📤 Sending breakout room results to Discord`);
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.safeSend({ embeds: [embed] });
     });
   },
 };

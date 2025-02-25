@@ -2,14 +2,18 @@
  * Safely handles Discord interactions with built-in error handling for expired interactions
  * @param {import('discord.js').Interaction} interaction - The Discord interaction to handle
  * @param {Function} handler - Async function that handles the interaction
+ * @param {Object} options - Options for handling the interaction
+ * @param {boolean} options.deferReply - Whether to defer the reply before executing handler
+ * @param {boolean} options.ephemeral - Whether the reply should be ephemeral
  */
-async function safeReply(interaction, handler) {
+async function safeReply(interaction, handler, options = {}) {
+  const { deferReply = false, ephemeral = false } = options;
+  
   try {
-    // Immediately try to defer the reply to extend the window
-    // Only if the interaction hasn't been responded to yet
-    if (!interaction.deferred && !interaction.replied) {
+    // If deferReply is true, try to defer the reply first
+    if (deferReply && !interaction.replied && !interaction.deferred) {
       try {
-        await interaction.deferReply();
+        await interaction.deferReply({ ephemeral });
         console.log(`🔄 Successfully deferred interaction ${interaction.id}`);
       } catch (deferError) {
         // If we can't defer, the interaction likely expired
@@ -21,7 +25,7 @@ async function safeReply(interaction, handler) {
       }
     }
 
-    // Once deferred (or if already deferred), execute the handler
+    // Execute the handler function
     await handler();
     return true;
   } catch (error) {

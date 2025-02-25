@@ -5,6 +5,7 @@ export default {
 		.setName('ping')
 		.setDescription('Replies with Pong!'),
 	async execute(interaction) {
-		await interaction.reply('Pong!');
+		// Use safeSend instead of reply to handle both deferred and non-deferred states
+		await interaction.safeSend('Pong!');
 	},
 };

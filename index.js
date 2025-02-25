@@ -8,6 +8,25 @@ const __dirname = import.meta.dirname;
 // Configure console-stamp
 consoleStamp(console, { format: ':date(HH:MM:ss)' });
 
+// Modify console.log to write to a log file
+const logDir = path.join(__dirname, 'log');
+if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir);
+}
+const logFile = path.join(logDir, `${new Date().toISOString().split('T')[0]}.log`);
+
+const originalConsoleLog = console.log;
+/**
+ * @param {string} message - The message to log
+ * @param {...any} optionalParams - Optional parameters to log
+ */
+console.log = function(message, ...optionalParams) {
+    const timestamp = new Date().toISOString();
+    const logMessage = `${timestamp} ${message}\n`;
+    fs.appendFileSync(logFile, logMessage);
+    originalConsoleLog.apply(console, [message, ...optionalParams]);
+};
+
 console.log('🚀 Starting the bot...');
 
 const token = process.env.TOKEN;

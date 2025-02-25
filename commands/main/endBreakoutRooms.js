@@ -71,7 +71,7 @@ export default {
           content: `Successfully moved ${totalMoved} member(s) back to ${mainChannel.name} and deleted ${breakoutRooms.size} breakout room(s)!`,
         });
       },
-      { deferReply: true, ephemeral: true }
+      { deferReply: true, ephemeral: false }
     );
   },
 };

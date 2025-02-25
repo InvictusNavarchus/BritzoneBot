@@ -43,6 +43,6 @@ export default {
           content: "An error occurred while creating breakout rooms. Please ensure the bot has the necessary permissions!",
         });
       }
-    }, { deferReply: true, ephemeral: true });
+    }, { deferReply: true, ephemeral: false });
   },
 };

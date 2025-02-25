@@ -14,7 +14,7 @@ BritzoneBot is a Discord bot designed to manage breakout rooms for voice channel
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/BritzoneBot.git
+    git clone https://github.com/InvictusNavarchus/BritzoneBot.git
     cd BritzoneBot
     ```
 

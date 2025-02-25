@@ -1,10 +1,10 @@
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder } from "discord.js";
 import safeReply from "../../helpers/safeReply.js";
-import createChannel from "../../helpers/createChannel.js";
 import isAdmin from "../../helpers/isAdmin.js";
 import distributeUsers from "../../helpers/distributeUsers.js";
-import moveUser from "../../helpers/moveUser.js";
 import breakoutRoomManager from "../../helpers/breakoutRoomManager.js";
+import { createBreakoutRooms, distributeToBreakoutRooms, endBreakoutSession } from "../../helpers/breakoutOperations.js";
+import stateManager from "../../helpers/breakoutStateManager.js";
 
 export default {
   data: new SlashCommandBuilder()
@@ -54,6 +54,18 @@ export default {
   async execute(interaction) {
     console.log(`🚀 Breakout command initiated by ${interaction.user.tag}`);
     
+    // Check for interrupted operations first
+    const inProgress = await stateManager.hasOperationInProgress(interaction.guildId);
+    if (inProgress) {
+      const currentOp = await stateManager.getCurrentOperation(interaction.guildId);
+      console.log(`⚠️ Found interrupted ${currentOp.type} operation for guild ${interaction.guildId}`);
+      
+      await interaction.reply({ 
+        content: `Found an interrupted breakout operation. Attempting to resume the previous '${currentOp.type}' command...`, 
+        ephemeral: true 
+      });
+    }
+    
     // Check if user has permission to use this command
     if (!isAdmin(interaction.member) && !interaction.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
       console.log(`🔒 Permission denied to ${interaction.user.tag} for breakout command`);
@@ -84,27 +96,22 @@ async function handleCreateCommand(interaction) {
     console.log(`🔢 Number of breakout rooms to create: ${numRooms}`);
 
     try {
-      const createdChannels = [];
-      const parent = interaction.channel.parent || interaction.guild;
+      const result = await createBreakoutRooms(interaction, numRooms);
       
-      // Create channels using helper function
-      for (let i = 1; i <= numRooms; i++) {
-        const channel = await createChannel(parent, `breakout-room-${i}`);
-        createdChannels.push(channel);
+      if (result.success) {
+        await interaction.safeSend({
+          content: result.message,
+        });
+      } else {
+        console.error(`❌ Error creating breakout rooms:`, result.error);
+        await interaction.safeSend({
+          content: result.message,
+        });
       }
-
-      // Store the created breakout rooms
-      breakoutRoomManager.storeRooms(interaction.guildId, createdChannels);
-      
-      await interaction.safeSend({
-        content: `Successfully created ${numRooms} breakout voice channels${
-          interaction.channel.parent ? ' in the same category' : ''
-        }!`,
-      });
     } catch (error) {
-      console.error(`❌ Error creating breakout rooms:`, error);
+      console.error(`❌ Error in handleCreateCommand:`, error);
       await interaction.safeSend({
-        content: "An error occurred while creating breakout rooms. Please ensure the bot has the necessary permissions!",
+        content: "An unexpected error occurred while creating breakout rooms. Please try again later.",
       });
     }
   }, { deferReply: true, ephemeral: false });
@@ -118,9 +125,6 @@ async function handleDistributeCommand(interaction) {
     // Get the main room from options
     const mainRoom = interaction.options.getChannel('mainroom');
     console.log(`🎯 Main room selected: ${mainRoom.name}`);
-    
-    // Store the main room for future reference
-    breakoutRoomManager.setMainRoom(interaction.guildId, mainRoom);
     
     // Get breakout rooms from the manager
     const breakoutRooms = breakoutRoomManager.getRooms(interaction.guildId);
@@ -143,37 +147,14 @@ async function handleDistributeCommand(interaction) {
     console.log(`🧩 Distributing ${usersInMainRoom.size} users among ${breakoutRooms.length} breakout rooms`);
     const distribution = distributeUsers(usersInMainRoom, breakoutRooms);
     
-    // Move users to their assigned breakout rooms
-    console.log(`🚚 Beginning user movement process`);
-    const movePromises = [];
-    const moveResults = {
-      success: [],
-      failed: []
-    };
+    // Use the recovery-compatible distribute function
+    const result = await distributeToBreakoutRooms(interaction, mainRoom, distribution);
     
-    for (const [roomId, users] of Object.entries(distribution)) {
-      const room = breakoutRooms.find(r => r.id === roomId);
-      console.log(`🔄 Processing moves for room: ${room.name} (${users.length} users)`);
-      
-      for (const user of users) {
-        movePromises.push(
-          moveUser(user, room)
-            .then(() => {
-              moveResults.success.push(`${user.user.tag} → ${room.name}`);
-              console.log(`✅ Successfully moved ${user.user.tag} to ${room.name}`);
-            })
-            .catch(error => {
-              moveResults.failed.push(`${user.user.tag} (${error.message})`);
-              console.log(`❌ Failed to move ${user.user.tag}: ${error.message}`);
-            })
-        );
-      }
+    if (!result.success) {
+      return interaction.safeSend({
+        content: result.message
+      });
     }
-    
-    // Wait for all moves to complete
-    console.log(`⏳ Waiting for all ${movePromises.length} move operations to complete`);
-    await Promise.all(movePromises);
-    console.log(`✅ All move operations completed: ${moveResults.success.length} successful, ${moveResults.failed.length} failed`);
     
     // Create embed for nice formatting
     console.log(`📝 Creating response embed`);
@@ -195,13 +176,13 @@ async function handleDistributeCommand(interaction) {
     });
     
     // Add error field if any
-    if (moveResults.failed.length > 0) {
+    if (result.moveResults.failed && result.moveResults.failed.length > 0) {
       embed.addFields({
         name: 'Failed Moves',
-        value: moveResults.failed.join('\n'),
+        value: result.moveResults.failed.join('\n'),
         inline: false
       });
-      console.log(`⚠️ Added ${moveResults.failed.length} failed moves to embed`);
+      console.log(`⚠️ Added ${result.moveResults.failed.length} failed moves to embed`);
     }
     
     console.log(`📤 Sending breakout room results to Discord`);
@@ -230,60 +211,18 @@ async function handleEndCommand(interaction) {
       }
       
       console.log(`🎯 Target main voice channel: ${mainChannel.name} (${mainChannel.id})`);
-
-      // Get tracked breakout rooms or identify them by name pattern
-      let breakoutRooms = breakoutRoomManager.getRooms(interaction.guildId);
       
-      // If no stored rooms, identify them by name pattern as fallback
-      if (!breakoutRooms || breakoutRooms.length === 0) {
-        breakoutRooms = interaction.guild.channels.cache.filter(
-          (channel) =>
-            channel.type === ChannelType.GuildVoice && channel.name.startsWith("breakout-room-")
-        );
-      }
-
-      if (breakoutRooms.length === 0) {
-        console.log(`⚠️ No breakout rooms found to end.`);
-        return interaction.safeSend({
-          content: "No breakout rooms found to end!",
+      const result = await endBreakoutSession(interaction, mainChannel);
+      
+      if (result.success) {
+        await interaction.safeSend({
+          content: result.message
+        });
+      } else {
+        await interaction.safeSend({
+          content: result.message || "Failed to end breakout session."
         });
       }
-
-      console.log(`🔍 Found ${breakoutRooms.length} breakout room(s) to process.`);
-
-      let totalMoved = 0;
-      // Iterate over each breakout room.
-      for (const room of breakoutRooms) {
-        console.log(`📌 Processing breakout room: ${room.name} (${room.id})`);
-
-        // Move each member in the breakout room back to the main channel.
-        for (const [memberId, member] of room.members) {
-          try {
-            await member.voice.setChannel(mainChannel);
-            console.log(`✅ Moved ${member.user.tag} from ${room.name} to ${mainChannel.name}`);
-            totalMoved++;
-          } catch (error) {
-            console.error(`❌ Failed to move ${member.user.tag} from ${room.name}:`, error);
-          }
-        }
-
-        // Delete the breakout room once its members have been moved.
-        try {
-          await room.delete("Breakout room ended and members moved back to main room");
-          console.log(`🗑️ Deleted breakout room: ${room.name}`);
-        } catch (error) {
-          console.error(`❌ Failed to delete breakout room ${room.name}:`, error);
-        }
-      }
-
-      // Clear the stored session data
-      breakoutRoomManager.clearSession(interaction.guildId);
-
-      console.log(`🎉 Successfully moved ${totalMoved} member(s) back to ${mainChannel.name} and deleted ${breakoutRooms.length} breakout room(s).`);
-
-      await interaction.safeSend({
-        content: `Successfully moved ${totalMoved} member(s) back to ${mainChannel.name} and deleted ${breakoutRooms.length} breakout room(s)!`,
-      });
     },
     { deferReply: true, ephemeral: false }
   );

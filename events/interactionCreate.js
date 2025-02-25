@@ -1,9 +1,17 @@
-import { Events, MessageFlags } from 'discord.js';
+import { Events, MessageFlags, CommandInteraction } from 'discord.js';
 import safeReply from '../helpers/safeReply.js';
 
-// Helper to patch the interaction with a safeSend method
+/**
+ * Enhances an interaction with a safeSend method
+ * @param {CommandInteraction} interaction - The Discord interaction to patch
+ * @returns {CommandInteraction & { safeSend: Function }} The enhanced interaction
+ */
 function patchInteraction(interaction) {
-  // Add safeSend method that handles the interaction state
+  /**
+   * Safely sends a response to the interaction
+   * @param {import('discord.js').InteractionReplyOptions} options - The reply options
+   * @returns {Promise<import('discord.js').Message|import('discord.js').InteractionResponse|null>}
+   */
   interaction.safeSend = async function(options) {
     try {
       if (this.deferred || this.replied) {
@@ -28,6 +36,10 @@ function patchInteraction(interaction) {
 
 export default {
   name: Events.InteractionCreate,
+  /**
+   * Handles incoming interactions
+   * @param {CommandInteraction} interaction - The Discord interaction
+   */
   async execute(interaction) {
     if (!interaction.isChatInputCommand()) return;
 
@@ -37,6 +49,23 @@ export default {
       console.error(`No command matching ${interaction.commandName} was found.`);
       return;
     }
+
+    // Log command execution with details
+    const options = interaction.options.data.map(opt => {
+      const value = opt.value;
+      // Handle subcommands and subcommand groups
+      if (opt.type === 1 || opt.type === 2) {
+        return `${opt.name}[${opt.options?.map(o => `${o.name}=${o.value}`).join(', ')}]`;
+      }
+      return `${opt.name}=${value}`;
+    });
+
+    console.log(`🔵 Command executed:
+    User: ${interaction.user.tag} (${interaction.user.id})
+    Guild: ${interaction.guild?.name} (${interaction.guild?.id})
+    Command: /${interaction.commandName}
+    Options: ${options.length ? options.join(', ') : 'none'}
+    Channel: ${interaction.channel?.name} (${interaction.channel?.id})`);
 
     // Enhance the interaction with our safeSend method
     patchInteraction(interaction);

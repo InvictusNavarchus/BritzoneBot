@@ -1,4 +1,4 @@
-import getRoles from './getRoles';
+import getRoles from './getRoles.js';
 
 /**
  * Check if a user has admin privileges

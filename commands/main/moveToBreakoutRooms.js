@@ -3,6 +3,7 @@ import isAdmin from '../../helpers/isAdmin.js';
 import getUsers from '../../helpers/getUsers.js';
 import moveUser from '../../helpers/moveUser.js';
 import distributeUsers from '../../helpers/distributeUsers.js';
+import safeReply from '../../helpers/safeReply.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -42,20 +43,18 @@ export default {
         
   async execute(interaction) {
     console.log(`🚀 Breakout command initiated by ${interaction.user.tag}`);
-    try {
-      // Check if user has permission to use this command
-      if (!isAdmin(interaction.member) && !interaction.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
-        console.log(`🔒 Permission denied to ${interaction.user.tag} for breakout command`);
-        return interaction.reply({ 
-          content: 'You do not have permission to use this command.', 
-          ephemeral: true 
-        });
-      }
-      
-      // Defer reply as this operation might take some time
-      console.log(`⏳ Deferring reply for breakout command`);
-      await interaction.deferReply();
-      
+    
+    // Check if user has permission to use this command
+    if (!isAdmin(interaction.member) && !interaction.member.permissions.has(PermissionFlagsBits.MoveMembers)) {
+      console.log(`🔒 Permission denied to ${interaction.user.tag} for breakout command`);
+      return interaction.reply({ 
+        content: 'You do not have permission to use this command.', 
+        ephemeral: true 
+      });
+    }
+    
+    // Use the safe reply helper to handle the rest of the command
+    await safeReply(interaction, async () => {
       // Get the main room and breakout rooms from options
       const mainRoom = interaction.options.getChannel('mainroom');
       console.log(`🎯 Main room selected: ${mainRoom.name}`);
@@ -151,13 +150,6 @@ export default {
       
       console.log(`📤 Sending breakout room results to Discord`);
       await interaction.editReply({ embeds: [embed] });
-    } catch (error) {
-      console.error(`❌ Error executing breakout command:`, error);
-      if (interaction.deferred) {
-        await interaction.editReply(`An error occurred: ${error.message}`);
-      } else {
-        await interaction.reply({ content: `An error occurred: ${error.message}`, ephemeral: true });
-      }
-    }
+    });
   },
 };

@@ -206,7 +206,7 @@ async function handleDistributeCommand(interaction) {
         .join('\n');
       
       embed.addFields({
-        name: '👥 Facilitators (staying in main room)',
+        name: '👥 Facilitators',
         value: facilitatorUsers || 'None',
         inline: false
       });

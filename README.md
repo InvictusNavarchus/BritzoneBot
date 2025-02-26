@@ -72,8 +72,6 @@ Follow these straightforward steps to deploy and configure BritzoneBot on your D
     ```
     Ensure your terminal remains running to keep the bot online. For production deployments, consider using process managers like `pm2` or `systemd` to ensure bot uptime and automatic restarts.
 
-Here’s your table split into two sections: one for commands with subcommands (`/breakout`) and another for standalone commands (`/utility`).  
-
 ---
 
 ## ⚙️ Command Reference  

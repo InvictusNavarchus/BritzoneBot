@@ -166,6 +166,38 @@ class BreakoutStateManager {
     await this.saveState();
     console.log(`🧹 Cleared state data for guild ${guildId}`);
   }
+
+  /**
+   * Sets timer data for a guild
+   * @param {string} guildId - The guild ID
+   * @param {Object} timerData - Timer data object
+   * @returns {Promise<void>}
+   */
+  async setTimerData(guildId, timerData) {
+    console.log(`💾 Storing timer data for guild ${guildId}`);
+    this.inMemoryState[`timer_${guildId}`] = timerData;
+    await this.saveState();
+  }
+
+  /**
+   * Gets timer data for a guild
+   * @param {string} guildId - The guild ID
+   * @returns {Promise<Object|null>} Timer data object or null if not found
+   */
+  async getTimerData(guildId) {
+    return this.inMemoryState[`timer_${guildId}`] || null;
+  }
+
+  /**
+   * Clears timer data for a guild
+   * @param {string} guildId - The guild ID
+   * @returns {Promise<void>}
+   */
+  async clearTimerData(guildId) {
+    console.log(`🗑️ Clearing timer data for guild ${guildId}`);
+    delete this.inMemoryState[`timer_${guildId}`];
+    await this.saveState();
+  }
 }
 
 // Export a singleton instance

@@ -63,6 +63,19 @@ export default {
             .addChannelTypes(ChannelType.GuildVoice)
             .setRequired(false)
         )
+    )
+    // Timer subcommand - new addition
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("timer")
+        .setDescription("Sets a timer for the breakout session")
+        .addIntegerOption(option =>
+          option
+            .setName("minutes")
+            .setDescription("Duration of the breakout session in minutes")
+            .setMinValue(1)
+            .setRequired(true)
+        )
     ),
 
   /**
@@ -102,6 +115,8 @@ export default {
       await handleDistributeCommand(interaction);
     } else if (subcommand === "end") {
       await handleEndCommand(interaction);
+    } else if (subcommand === "timer") {
+      await handleTimerCommand(interaction);
     }
   },
 };
@@ -277,4 +292,174 @@ async function handleEndCommand(interaction) {
     },
     { deferReply: true, ephemeral: false }
   );
+}
+
+/**
+ * Handles the timer subcommand for breakout rooms
+ * @param {CommandInteraction} interaction - The Discord interaction
+ * @returns {Promise<void>}
+ */
+async function handleTimerCommand(interaction) {
+  await safeReply(interaction, async () => {
+    const minutes = interaction.options.getInteger("minutes");
+    console.log(`⏱️ Setting breakout timer for ${minutes} minutes`);
+    
+    const breakoutRooms = breakoutRoomManager.getRooms(interaction.guildId);
+    
+    if (breakoutRooms.length === 0) {
+      console.log(`❌ Error: No breakout rooms found`);
+      return interaction.safeSend('No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
+    }
+    
+    // Calculate reminder times
+    const fiveMinWarningTime = minutes - 5;
+    const oneMinWarningTime = minutes - 1;
+    
+    // Set up the timer (converting minutes to milliseconds)
+    const timerData = {
+      totalMinutes: minutes,
+      startTime: Date.now(),
+      guildId: interaction.guildId,
+      breakoutRooms: breakoutRooms.map(room => room.id),
+      fiveMinSent: fiveMinWarningTime <= 0, // Skip if total time is less than 5 minutes
+      oneMinSent: oneMinWarningTime <= 0,   // Skip if total time is less than 1 minute
+    };
+    
+    // Store timer data in state manager
+    await stateManager.setTimerData(interaction.guildId, timerData);
+    
+    // Start the timer monitoring process
+    monitorBreakoutTimer(timerData, interaction);
+    
+    await interaction.safeSend({
+      content: `⏱️ Breakout timer set for ${minutes} minutes. Reminders will be sent at 5 and 1 minute marks.`
+    });
+  }, { deferReply: true, ephemeral: false });
+}
+
+/**
+ * Monitors a breakout timer and sends reminders at appropriate times
+ * @param {Object} timerData - Timer data object with all necessary information
+ * @param {CommandInteraction} interaction - The original Discord interaction
+ */
+async function monitorBreakoutTimer(timerData, interaction) {
+  const { totalMinutes, startTime, guildId, breakoutRooms } = timerData;
+  const endTime = startTime + (totalMinutes * 60 * 1000);
+  let timerState = await stateManager.getTimerData(guildId);
+  
+  console.log(`⏱️ Started breakout timer monitoring for ${totalMinutes} minutes in guild ${guildId}`);
+  
+  // Timer monitoring interval (check every 20 seconds)
+  const intervalId = setInterval(async () => {
+    try {
+      // Refresh timer state
+      timerState = await stateManager.getTimerData(guildId);
+      
+      // If timer was cancelled or doesn't exist anymore
+      if (!timerState) {
+        console.log(`⏱️ Timer for guild ${guildId} was cancelled or removed`);
+        clearInterval(intervalId);
+        return;
+      }
+      
+      const now = Date.now();
+      const minutesLeft = Math.ceil((endTime - now) / (60 * 1000));
+      
+      // Check if we need to send the 5-minute warning
+      if (minutesLeft <= 5 && !timerState.fiveMinSent) {
+        console.log(`⏱️ Sending 5-minute warning to ${breakoutRooms.length} breakout rooms`);
+        await sendReminderWithRetry(guildId, breakoutRooms, 
+          "⏱️ **5 minutes remaining** in this breakout session.", interaction.client);
+        
+        // Update state to mark 5-minute warning as sent
+        timerState.fiveMinSent = true;
+        await stateManager.setTimerData(guildId, timerState);
+      }
+      
+      // Check if we need to send the 1-minute warning
+      if (minutesLeft <= 1 && !timerState.oneMinSent) {
+        console.log(`⏱️ Sending 1-minute warning to ${breakoutRooms.length} breakout rooms`);
+        await sendReminderWithRetry(guildId, breakoutRooms, 
+          "⏱️ **1 minute remaining** in this breakout session. Please wrap up your discussion.", interaction.client);
+        
+        // Update state to mark 1-minute warning as sent
+        timerState.oneMinSent = true;
+        await stateManager.setTimerData(guildId, timerState);
+      }
+      
+      // Check if timer has ended
+      if (now >= endTime) {
+        console.log(`⏱️ Breakout timer ended for guild ${guildId}`);
+        await sendReminderWithRetry(guildId, breakoutRooms, 
+          "⏰ **Time's up!** This breakout session has ended.", interaction.client);
+        
+        // Clean up timer state
+        await stateManager.clearTimerData(guildId);
+        clearInterval(intervalId);
+      }
+    } catch (error) {
+      console.error(`❌ Error in timer monitoring:`, error);
+    }
+  }, 20000); // Check every 20 seconds
+}
+
+/**
+ * Sends a reminder message to text channels associated with voice channels with retry logic
+ * @param {string} guildId - The guild ID
+ * @param {string[]} roomIds - Array of voice channel IDs
+ * @param {string} message - The reminder message to send
+ * @param {Client} client - Discord.js client
+ * @returns {Promise<void>}
+ */
+async function sendReminderWithRetry(guildId, roomIds, message, client) {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) {
+    console.error(`❌ Could not find guild with ID ${guildId}`);
+    return;
+  }
+  
+  const maxRetries = 5;
+  const retryDelay = 5000; // 5 seconds
+  
+  for (const roomId of roomIds) {
+    const voiceChannel = guild.channels.cache.get(roomId);
+    if (!voiceChannel) {
+      console.log(`⚠️ Could not find voice channel ${roomId}`);
+      continue;
+    }
+    
+    // Find the text channel associated with this voice channel
+    // Typically, text channels have similar names to voice channels
+    const textChannel = guild.channels.cache.find(c => 
+      c.type === ChannelType.GuildText && 
+      c.name.toLowerCase().includes(voiceChannel.name.toLowerCase().replace(/\s+/g, '-')));
+    
+    if (!textChannel) {
+      console.log(`⚠️ Could not find text channel for ${voiceChannel.name}`);
+      continue;
+    }
+    
+    let success = false;
+    let attempts = 0;
+    
+    while (!success && attempts < maxRetries) {
+      try {
+        await textChannel.send(message);
+        success = true;
+        console.log(`✅ Reminder sent to ${textChannel.name}`);
+      } catch (error) {
+        attempts++;
+        console.error(`❌ Attempt ${attempts}/${maxRetries} - Failed to send reminder to ${textChannel.name}:`, error);
+        
+        if (attempts < maxRetries) {
+          console.log(`🔄 Retrying in ${retryDelay/1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
+    
+    if (!success) {
+      console.error(`❌ Failed to send reminder to ${textChannel.name} after ${maxRetries} attempts`);
+    }
+  }
 }

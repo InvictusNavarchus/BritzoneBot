@@ -113,12 +113,3 @@ Contributions are welcome! Please open an issue or submit a pull request for any
 
 This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgements
-
-I'm grateful for AI assistance that has been instrumental in the development of this project. Special thanks to:
-
-- **GitHub Copilot**: For suggesting great git commits and significantly make coding much easier, like a real copilot.
-- **ChatGPT 4o**: For providing quick code changes.
-- **Claude 3.7 Sonnet**: For developing complex code logic and integration.
-- **ChatGPT o3-mini**: For being the reliable sidekick when Claude is not available.
-- **Gemini 2.0 Flash**: For writing clear documentation.

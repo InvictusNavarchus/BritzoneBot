@@ -56,59 +56,44 @@ To deploy commands locally, run:
 node deployCommandsLocal.js
 ```
 
-### Commands
+Here’s your table split into two sections: one for commands with subcommands (`/breakout`) and another for standalone commands (`/utility`).  
 
-#### `/breakout create`
+---
 
-Creates multiple breakout voice channels.
+## ⚙️ Command Reference  
 
-- **number**: Number of breakout rooms to create (required).
+BritzoneBot offers a suite of intuitive slash commands to manage breakout rooms effectively. Below is a detailed command reference.  
 
-#### `/breakout distribute`
+### 🏠 Breakout Commands  
 
-Distributes users from a main voice channel into breakout rooms.
+These commands manage breakout voice channels and require the **Move Members** permission.  
 
-- **mainroom**: The main voice channel where members are currently located (required).
-- **facilitators**: List of users to be assigned as facilitators in each breakout room (optional).
+| Command      | Subcommand     | Description                                                              | Options                                                                                                               |
+|-------------|--------------|------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
+| `/breakout` | `create`       | Creates multiple breakout voice channels.                                  | `number`: *(Integer, Required)* - The number of breakout rooms to create. Must be a positive integer.              |
+| `/breakout` | `distribute`   | Distributes users from a main voice channel into breakout rooms.           | `mainroom`: *(Voice/Stage Channel, Required)* - The main voice channel to distribute users from.                     |
+|             |              |                                                                      | `facilitators`: *(String, Optional)* - User mentions to exclude from distribution (facilitators to remain in the main room). |
+| `/breakout` | `end`          | Ends the breakout session, moves users back, and deletes breakout rooms.  | `main_room`: *(Voice Channel, Optional)* - The main voice channel to move users back to. If omitted, uses the previously set main room. |
+| `/breakout` | `timer`        | Sets a timer for the breakout session.                                    | `minutes`: *(Integer, Required)* - Duration of the breakout session in minutes. Must be a positive integer.          |
+| `/breakout` | `broadcast`    | Broadcasts a message to all active breakout rooms.                       | `message`: *(String, Required)* - The message content to broadcast.                                                 |
+| `/breakout` | `send-message` | Sends a direct message to a specific voice channel.                      | `channel`: *(Voice Channel, Required)* - The target voice channel to send the message to.                             |
+|             |              |                                                                      | `message`: *(String, Required)* - The message content to send.                                                        |
 
-#### `/breakout end`
+**Note**: `/breakout` commands require users to have the **Move Members** permission to ensure operational security and prevent unauthorized usage.  
 
-Moves users back to the main voice channel and deletes breakout rooms.
+---
 
-- **main_room**: The main voice channel where users should be moved back (optional).
+### 🛠️ Utility Commands  
 
-#### `/breakout timer`
+These standalone commands provide general information and do not require special permissions.  
 
-Sets a timer for the breakout session.
+| Command      | Description                                        | Options       |
+|-------------|------------------------------------------------|--------------|
+| `/user`   | Provides information about the user executing the command.  | *No options.* |
+| `/server` | Provides information about the Discord server.              | *No options.* |
+| `/ping`   | Tests the bot's responsiveness. Replies with "Pong!".       | *No options.* |
 
-- **minutes**: Duration of the breakout session in minutes (required).
-
-#### `/breakout broadcast`
-
-Broadcasts a message to all breakout rooms.
-
-- **message**: The message to broadcast (required).
-
-#### `/breakout send-message`
-
-Sends a message to a specific voice channel.
-
-- **channel**: The voice channel to send the message to (required).
-- **message**: The message to send (required).
-
-### Utility Commands
-
-#### `/user`
-
-Provides information about the user.
-
-#### `/server`
-
-Provides information about the server.
-
-#### `/ping`
-
-Replies with Pong!
+This structure makes it clear that `/breakout` commands require subcommands, while `/utility` commands do not.
 
 ## Helpers
 

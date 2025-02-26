@@ -120,6 +120,6 @@ This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) fi
 I'm grateful for AI assistance that has been instrumental in the development of this project. Special thanks to:
 
 - **ChatGPT 4o**: For providing quick code changes.
-- **Claude 3.7**: For developing complex code logic and integration.
+- **Claude 3.7 Sonnet**: For developing complex code logic and integration.
 - **ChatGPT o3-mini**: For being the reliable sidekick when Claude is not available.
-- **Gemini 2.0**: For writing clear documentation.
+- **Gemini 2.0 Flash**: For writing clear documentation.

@@ -6,7 +6,7 @@ import breakoutRoomManager from "../../helpers/breakoutRoomManager.js";
 import { createBreakoutRooms, distributeToBreakoutRooms, endBreakoutSession } from "../../helpers/breakoutOperations.js";
 import stateManager from "../../helpers/breakoutStateManager.js";
 import { monitorBreakoutTimer } from "../../helpers/breakoutTimerHelper.js"; // new import
-import { broadcastToBreakoutRooms, sendMessageToChannel } from "../../helpers/messageHelpers.js"; // new import
+import { broadcastToBreakoutRooms, sendMessageToChannel } from "../../helpers/breakoutMessageHelper.js"; // new import
 
 /**
  * @typedef {Object} OperationResult

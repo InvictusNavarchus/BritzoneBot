@@ -1,5 +1,5 @@
 import { ChannelType } from "discord.js";
-import stateManager from "./breakoutStateManager.js"; // adjust if necessary
+import stateManager from "./breakoutStateManager.js";
 
 /**
  * Monitors a breakout timer and sends reminders at defined intervals.

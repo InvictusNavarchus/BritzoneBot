@@ -6,7 +6,7 @@
 
 BritzoneBot is a Discord bot designed to manage breakout rooms for voice channels in a Discord server. It provides commands to create, distribute users among, and end breakout sessions with robust error handling and state management.
 
-## Features
+## ✨ Features
 
 - **Create Breakout Rooms**: Create multiple breakout voice channels.
 - **Distribute Users**: Distribute users from a main voice channel into breakout rooms.
@@ -107,10 +107,10 @@ These standalone commands provide general information and do not require special
 
 This structure makes it clear that `/breakout` commands require subcommands, while `/utility` commands do not.
 
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request for any changes or improvements.
 
-## License
+## 📜 License
 
 This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.

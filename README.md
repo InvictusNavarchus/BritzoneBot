@@ -17,48 +17,60 @@ BritzoneBot is a Discord bot designed to manage breakout rooms for voice channel
 - **Safe Interaction Handling**: Built-in error handling for expired interactions and network issues.
 - **State Management**: Persistent state management to recover from interruptions.
 
-## Installation
+## 🛠️ Installation Guide
 
-1. Clone the repository:
+Follow these straightforward steps to deploy and configure BritzoneBot on your Discord server:
+
+1.  **Clone the Repository**:
+
     ```sh
-    git clone https://github.com/InvictusNavarchus/BritzoneBot.git
+    git clone [https://github.com/InvictusNavarchus/BritzoneBot.git](https://github.com/InvictusNavarchus/BritzoneBot.git)
     cd BritzoneBot
     ```
 
-2. Install dependencies:
+2.  **Install Dependencies**:
+
+    Ensure you have Node.js and npm installed. Navigate to the cloned repository directory in your terminal and run:
+
     ```sh
     npm install
     ```
 
-3. Create a `.env` file in the root directory and add your bot token:
-    ```env
-    TOKEN=your-bot-token
-    BOT_ID=your-bot-id
+3.  **Configuration**:
+
+    *   **Environment Variables**: Create a `.env` file in the root directory of the repository. Add the following environment variables, replacing placeholders with your actual bot token and bot ID obtained from the [Discord Developer Portal](https://discord.com/developers/applications):
+
+        ```env
+        TOKEN=your-bot-token
+        BOT_ID=your-bot-id
+        ```
+
+    *   **Guild List Configuration**: Create a `guildList.json` file in the root directory. This file maps your Discord server names to their respective IDs.  You'll need to retrieve your server IDs from Discord. An example `guildList.json` structure is provided below:
+
+        ```json
+        {
+           "YourServerName1": "YourServerID1",
+           "YourServerName2": "YourServerID2"
+        }
+        ```
+
+4.  **Deployment**:
+
+    *   **Local Command Deployment**: To register the bot's commands within your specified Discord servers, run:
+
+        ```sh
+        node deployCommandsLocal.js
+        ```
+        This script will deploy the commands to the guilds listed in your `guildList.json`.
+
+5.  **Run the Bot**:
+
+    Start the BritzoneBot using the following command:
+
+    ```sh
+    node index.js
     ```
-
-4. Create a `guildList.json` file in the root directory and add your guilds:
-    ```json
-    {
-      "GuildName1": "GuildID1",
-      "GuildName2": "GuildID2"
-    }
-    ```
-
-## Usage
-
-### Running the Bot
-
-To start the bot, run:
-```sh
-node index.js
-```
-
-### Deploying Commands
-
-To deploy commands locally, run:
-```sh
-node deployCommandsLocal.js
-```
+    Ensure your terminal remains running to keep the bot online. For production deployments, consider using process managers like `pm2` or `systemd` to ensure bot uptime and automatic restarts.
 
 Here’s your table split into two sections: one for commands with subcommands (`/breakout`) and another for standalone commands (`/utility`).  
 

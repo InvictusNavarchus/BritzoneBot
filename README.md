@@ -7,6 +7,9 @@ BritzoneBot is a Discord bot designed to manage breakout rooms for voice channel
 - **Create Breakout Rooms**: Create multiple breakout voice channels.
 - **Distribute Users**: Distribute users from a main voice channel into breakout rooms.
 - **End Breakout Sessions**: Move users back to the main voice channel and delete breakout rooms.
+- **Set Timer**: Set a timer for breakout sessions with reminders.
+- **Broadcast Message**: Broadcast a message to all breakout rooms.
+- **Send Message**: Send a message to a specific voice channel.
 - **Safe Interaction Handling**: Built-in error handling for expired interactions and network issues.
 - **State Management**: Persistent state management to recover from interruptions.
 
@@ -74,6 +77,25 @@ Moves users back to the main voice channel and deletes breakout rooms.
 
 - **main_room**: The main voice channel where users should be moved back (optional).
 
+#### `/breakout timer`
+
+Sets a timer for the breakout session.
+
+- **minutes**: Duration of the breakout session in minutes (required).
+
+#### `/breakout broadcast`
+
+Broadcasts a message to all breakout rooms.
+
+- **message**: The message to broadcast (required).
+
+#### `/breakout send-message`
+
+Sends a message to a specific voice channel.
+
+- **channel**: The voice channel to send the message to (required).
+- **message**: The message to send (required).
+
 ### Utility Commands
 
 #### `/user`
@@ -103,6 +125,9 @@ The bot includes several helper functions for managing interactions, users, role
 - **breakoutStateManager**: Manages state persistence for breakout room operations.
 - **breakoutRoomManager**: In-memory storage for tracking breakout rooms per guild.
 - **breakoutOperations**: Functions for creating, distributing, and ending breakout sessions with checkpointing.
+- **breakoutTimerHelper**: Functions for managing breakout session timers.
+- **broadcastToBreakoutRooms**: Broadcasts a message to all breakout rooms.
+- **sendMessageToChannel**: Sends a message to a specific voice channel.
 
 ## Contributing
 

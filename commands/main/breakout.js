@@ -77,6 +77,37 @@ export default {
             .setMinValue(1)
             .setRequired(true)
         )
+    )
+    // Broadcast subcommand - new addition
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('broadcast')
+        .setDescription('Broadcasts a message to all breakout rooms')
+        .addStringOption(option =>
+          option
+            .setName('message')
+            .setDescription('The message to broadcast')
+            .setRequired(true)
+        )
+    )
+    // Send-message subcommand - new addition
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('send-message')
+        .setDescription('Sends a message to a specific voice channel')
+        .addChannelOption(option =>
+          option
+            .setName('channel')
+            .setDescription('The voice channel to send the message to')
+            .addChannelTypes(ChannelType.GuildVoice)
+            .setRequired(true)
+        )
+        .addStringOption(option =>
+          option
+            .setName('message')
+            .setDescription('The message to send')
+            .setRequired(true)
+        )
     ),
 
   /**
@@ -118,6 +149,10 @@ export default {
       await handleEndCommand(interaction);
     } else if (subcommand === "timer") {
       await handleTimerCommand(interaction);
+    } else if (subcommand === "broadcast") {
+      await handleBroadcastCommand(interaction);
+    } else if (subcommand === "send-message") {
+      await handleSendMessageCommand(interaction);
     }
   },
 };
@@ -332,6 +367,63 @@ async function handleTimerCommand(interaction) {
     
     await interaction.safeSend({
       content: `⏱️ Breakout timer set for ${minutes} minutes. Reminder will be sent at 5 minute mark.`
+    });
+  }, { deferReply: true, ephemeral: false });
+}
+
+/**
+ * Handles the broadcast subcommand
+ * @param {CommandInteraction} interaction - The Discord interaction
+ * @returns {Promise<void>}
+ */
+async function handleBroadcastCommand(interaction) {
+  await safeReply(interaction, async () => {
+    const message = interaction.options.getString('message');
+    console.log(`📢 Broadcasting message: "${message}"`);
+
+    const result = await broadcastToBreakoutRooms(interaction.guildId, message);
+
+    if (result.success) {
+      const embed = new EmbedBuilder()
+        .setTitle('Broadcast Results')
+        .setColor('#00FF00')
+        .setDescription('Message broadcast complete')
+        .addFields(
+          { name: 'Successfully Sent To', value: result.sent.join('\n') || 'None', inline: true }
+        );
+
+      if (result.failed.length > 0) {
+        embed.addFields(
+          { name: 'Failed To Send To', value: result.failed.join('\n'), inline: true }
+        );
+      }
+
+      await interaction.safeSend({ embeds: [embed] });
+    } else {
+      await interaction.safeSend({
+        content: result.message
+      });
+    }
+  }, { deferReply: true, ephemeral: false });
+}
+
+/**
+ * Handles the send-message subcommand
+ * @param {CommandInteraction} interaction - The Discord interaction
+ * @returns {Promise<void>}
+ */
+async function handleSendMessageCommand(interaction) {
+  await safeReply(interaction, async () => {
+    const channel = interaction.options.getChannel('channel');
+    const message = interaction.options.getString('message');
+    
+    console.log(`📨 Sending message to ${channel.name}: "${message}"`);
+
+    const result = await sendMessageToChannel(channel, message);
+
+    await interaction.safeSend({
+      content: result.message,
+      ephemeral: !result.success
     });
   }, { deferReply: true, ephemeral: false });
 }

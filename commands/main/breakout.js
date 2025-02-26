@@ -312,18 +312,16 @@ async function handleTimerCommand(interaction) {
       return interaction.safeSend('No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
     }
     
-    // Calculate reminder times
+    // Calculate reminder time
     const fiveMinWarningTime = minutes - 5;
-    const oneMinWarningTime = minutes - 1;
     
-    // Set up the timer (converting minutes to milliseconds)
+    // Set up the timer data (converting minutes to milliseconds)
     const timerData = {
       totalMinutes: minutes,
       startTime: Date.now(),
       guildId: interaction.guildId,
       breakoutRooms: breakoutRooms.map(room => room.id),
       fiveMinSent: fiveMinWarningTime <= 0, // Skip if total time is less than 5 minutes
-      oneMinSent: oneMinWarningTime <= 0,   // Skip if total time is less than 1 minute
     };
     
     // Store timer data in state manager
@@ -333,7 +331,7 @@ async function handleTimerCommand(interaction) {
     monitorBreakoutTimer(timerData, interaction);
     
     await interaction.safeSend({
-      content: `⏱️ Breakout timer set for ${minutes} minutes. Reminders will be sent at 5 and 1 minute marks.`
+      content: `⏱️ Breakout timer set for ${minutes} minutes. Reminder will be sent at 5 minute mark.`
     });
   }, { deferReply: true, ephemeral: false });
 }

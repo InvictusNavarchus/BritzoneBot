@@ -10,7 +10,6 @@ import stateManager from "./breakoutStateManager.js"; // adjust if necessary
  * @param {string} timerData.guildId - The guild ID.
  * @param {string[]} timerData.breakoutRooms - Array of breakout room IDs.
  * @param {boolean} timerData.fiveMinSent - Flag indicating whether the 5-minute warning has been sent.
- * @param {boolean} timerData.oneMinSent - Flag indicating whether the 1-minute warning has been sent.
  * @param {import("discord.js").CommandInteraction} interaction - The Discord command interaction.
  * @returns {void}
  */
@@ -42,14 +41,7 @@ export async function monitorBreakoutTimer(timerData, interaction) {
         await stateManager.setTimerData(guildId, timerState);
       }
       
-      if (minutesLeft <= 1 && !timerState.oneMinSent) {
-        console.log(`⏱️ Sending 1-minute warning to ${breakoutRooms.length} breakout rooms`);
-        await sendReminderWithRetry(guildId, breakoutRooms,
-          "⏱️ **1 minute remaining** in this breakout session. Please wrap up your discussion.", interaction.client);
-        
-        timerState.oneMinSent = true;
-        await stateManager.setTimerData(guildId, timerState);
-      }
+      // Removed 1-minute reminder block
       
       if (now >= endTime) {
         console.log(`⏱️ Breakout timer ended for guild ${guildId}`);

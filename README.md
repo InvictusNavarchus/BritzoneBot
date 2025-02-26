@@ -1,5 +1,9 @@
 # BritzoneBot
 
+[![Project Status](https://img.shields.io/badge/Status-Stable-brightgreen.svg)](https://github.com/InvictusNavarchus/BritzoneBot)
+[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E=22.12.0-green.svg)](https://nodejs.org/en/)
+
 BritzoneBot is a Discord bot designed to manage breakout rooms for voice channels in a Discord server. It provides commands to create, distribute users among, and end breakout sessions with robust error handling and state management.
 
 ## Features

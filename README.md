@@ -111,3 +111,6 @@ This structure makes it clear that `/breakout` commands require subcommands, whi
 
 Contributions are welcome! Please open an issue or submit a pull request for any changes or improvements.
 
+## License
+
+This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.

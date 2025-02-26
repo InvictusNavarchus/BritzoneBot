@@ -79,8 +79,6 @@ These commands manage breakout voice channels and require the **Move Members** p
 | `/breakout` | `send-message` | Sends a direct message to a specific voice channel.                      | `channel`: *(Voice Channel, Required)* - The target voice channel to send the message to.                             |
 |             |              |                                                                      | `message`: *(String, Required)* - The message content to send.                                                        |
 
-**Note**: `/breakout` commands require users to have the **Move Members** permission to ensure operational security and prevent unauthorized usage.  
-
 ---
 
 ### 🛠️ Utility Commands  
@@ -94,25 +92,6 @@ These standalone commands provide general information and do not require special
 | `/ping`   | Tests the bot's responsiveness. Replies with "Pong!".       | *No options.* |
 
 This structure makes it clear that `/breakout` commands require subcommands, while `/utility` commands do not.
-
-## Helpers
-
-The bot includes several helper functions for managing interactions, users, roles, and breakout rooms:
-
-- **safeReply**: Handles Discord interactions with built-in error handling.
-- **moveUser**: Moves a user to a specified voice channel.
-- **isAdmin**: Checks if a user has admin privileges.
-- **getUsers**: Gets all users in a voice channel.
-- **getRoles**: Gets all roles for a user.
-- **distributeUsers**: Distributes users among breakout rooms.
-- **deleteChannel**: Safely deletes a voice channel.
-- **createChannel**: Creates a new voice channel.
-- **breakoutStateManager**: Manages state persistence for breakout room operations.
-- **breakoutRoomManager**: In-memory storage for tracking breakout rooms per guild.
-- **breakoutOperations**: Functions for creating, distributing, and ending breakout sessions with checkpointing.
-- **breakoutTimerHelper**: Functions for managing breakout session timers.
-- **broadcastToBreakoutRooms**: Broadcasts a message to all breakout rooms.
-- **sendMessageToChannel**: Sends a message to a specific voice channel.
 
 ## Contributing
 

@@ -1,6 +1,19 @@
 import { ChannelType } from "discord.js";
 import stateManager from "./breakoutStateManager.js"; // adjust if necessary
 
+/**
+ * Monitors a breakout timer and sends reminders at defined intervals.
+ * 
+ * @param {Object} timerData - Timer configuration data.
+ * @param {number} timerData.totalMinutes - Total duration of the timer in minutes.
+ * @param {number} timerData.startTime - Timestamp (in milliseconds) when the timer started.
+ * @param {string} timerData.guildId - The guild ID.
+ * @param {string[]} timerData.breakoutRooms - Array of breakout room IDs.
+ * @param {boolean} timerData.fiveMinSent - Flag indicating whether the 5-minute warning has been sent.
+ * @param {boolean} timerData.oneMinSent - Flag indicating whether the 1-minute warning has been sent.
+ * @param {import("discord.js").CommandInteraction} interaction - The Discord command interaction.
+ * @returns {void}
+ */
 export async function monitorBreakoutTimer(timerData, interaction) {
   const { totalMinutes, startTime, guildId, breakoutRooms } = timerData;
   const endTime = startTime + (totalMinutes * 60 * 1000);
@@ -52,6 +65,15 @@ export async function monitorBreakoutTimer(timerData, interaction) {
   }, 20000);
 }
 
+/**
+ * Sends a reminder message to associated text channels with retry logic.
+ * 
+ * @param {string} guildId - The ID of the guild.
+ * @param {string[]} roomIds - Array of voice channel IDs.
+ * @param {string} message - The reminder message to be sent.
+ * @param {import("discord.js").Client} client - The Discord.js client instance.
+ * @returns {Promise<void>}
+ */
 export async function sendReminderWithRetry(guildId, roomIds, message, client) {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) {

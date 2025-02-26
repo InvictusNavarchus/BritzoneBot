@@ -121,4 +121,5 @@ I'm grateful for AI assistance that has been instrumental in the development of 
 
 - **ChatGPT 4o**: For providing quick code changes.
 - **Claude 3.7**: For developing complex code logic and integration.
+- **ChatGPT o3-mini**: For being the reliable sidekick when Claude is not available.
 - **Gemini 2.0**: For writing clear documentation.

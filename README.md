@@ -105,8 +105,6 @@ These standalone commands provide general information and do not require special
 | `/server` | Provides information about the Discord server.              | *No options.* |
 | `/ping`   | Tests the bot's responsiveness. Replies with "Pong!".       | *No options.* |
 
-This structure makes it clear that `/breakout` commands require subcommands, while `/utility` commands do not.
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request for any changes or improvements.

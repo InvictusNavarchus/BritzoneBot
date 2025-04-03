@@ -6,7 +6,7 @@
     "dotenv": "^16.4.7"
   },
   "name": "britzone-bot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Discord bot designed to manage breakout rooms for voice channels",
   "main": "index.js",
   "scripts": {

@@ -33,6 +33,12 @@ export default {
             .setMinValue(1)
             .setRequired(true)
         )
+        .addBooleanOption(option =>
+          option
+            .setName("force")
+            .setDescription("Force creation even if rooms already exist")
+            .setRequired(false)
+        )
     )
     // Distribute subcommand
     .addSubcommand(subcommand =>
@@ -52,6 +58,12 @@ export default {
             .setDescription("Users to keep in the main room (mention them with @)")
             .setRequired(false)
         )
+        .addBooleanOption(option =>
+          option
+            .setName("force")
+            .setDescription("Force redistribution even if users are already distributed")
+            .setRequired(false)
+        )
     )
     // End subcommand
     .addSubcommand(subcommand =>
@@ -63,6 +75,12 @@ export default {
             .setName("main_room")
             .setDescription("The main voice channel where users should be moved back")
             .addChannelTypes(ChannelType.GuildVoice)
+            .setRequired(false)
+        )
+        .addBooleanOption(option =>
+          option
+            .setName("force")
+            .setDescription("Force deletion even if no users are in breakout rooms")
             .setRequired(false)
         )
     )
@@ -166,10 +184,11 @@ export default {
 async function handleCreateCommand(interaction) {
   await safeReply(interaction, async () => {
     const numRooms = interaction.options.getInteger("number");
-    console.log(`🔢 Number of breakout rooms to create: ${numRooms}`);
+    const force = interaction.options.getBoolean("force") || false;
+    console.log(`🔢 Number of breakout rooms to create: ${numRooms} (force: ${force})`);
 
     try {
-      const result = await createBreakoutRooms(interaction, numRooms);
+      const result = await createBreakoutRooms(interaction, numRooms, force);
       
       if (result.success) {
         await interaction.safeSend({
@@ -199,7 +218,8 @@ async function handleDistributeCommand(interaction) {
   await safeReply(interaction, async () => {
     const mainRoom = interaction.options.getChannel('mainroom');
     const facilitatorsInput = interaction.options.getString('facilitators');
-    console.log(`🎯 Main room selected: ${mainRoom.name}`);
+    const force = interaction.options.getBoolean('force') || false;
+    console.log(`🎯 Main room selected: ${mainRoom.name} (force: ${force})`);
     
     // Process facilitators if provided
     const facilitators = new Set();
@@ -234,7 +254,7 @@ async function handleDistributeCommand(interaction) {
     const distribution = distributeUsers(usersToDistribute, breakoutRooms);
     
     // Use the recovery-compatible distribute function
-    const result = await distributeToBreakoutRooms(interaction, mainRoom, distribution);
+    const result = await distributeToBreakoutRooms(interaction, mainRoom, distribution, force);
     
     if (!result.success) {
       return interaction.safeSend({
@@ -302,6 +322,7 @@ async function handleEndCommand(interaction) {
     async () => {
       // Get the main voice channel from user input or from the manager
       let mainChannel = interaction.options.getChannel("main_room");
+      const force = interaction.options.getBoolean("force") || false;
       
       // If no main channel is specified, try to get it from the manager
       if (!mainChannel) {
@@ -313,9 +334,9 @@ async function handleEndCommand(interaction) {
         }
       }
       
-      console.log(`🎯 Target main voice channel: ${mainChannel.name} (${mainChannel.id})`);
+      console.log(`🎯 Target main voice channel: ${mainChannel.name} (${mainChannel.id}) (force: ${force})`);
       
-      const result = await endBreakoutSession(interaction, mainChannel);
+      const result = await endBreakoutSession(interaction, mainChannel, force);
       
       if (result.success) {
         await interaction.safeSend({
@@ -347,10 +368,9 @@ async function handleTimerCommand(interaction) {
       console.log(`❌ Error: No breakout rooms found`);
       return interaction.safeSend('No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
     }
-    
+      
     // Calculate reminder time
     const fiveMinWarningTime = minutes - 5;
-    
     // Set up the timer data (converting minutes to milliseconds)
     const timerData = {
       totalMinutes: minutes,
@@ -359,10 +379,9 @@ async function handleTimerCommand(interaction) {
       breakoutRooms: breakoutRooms.map(room => room.id),
       fiveMinSent: fiveMinWarningTime <= 0, // Skip if total time is less than 5 minutes
     };
-    
+      
     // Store timer data in state manager
     await stateManager.setTimerData(interaction.guildId, timerData);
-    
     // Start the timer monitoring process
     monitorBreakoutTimer(timerData, interaction);
     

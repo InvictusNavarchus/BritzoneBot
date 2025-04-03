@@ -5,9 +5,60 @@ import createChannel from './createChannel.js';
 import moveUser from './moveUser.js';
 
 /**
+ * Checks if breakout rooms already exist for the guild
+ */
+export async function hasExistingBreakoutRooms(guild) {
+  // Check in room manager first
+  const storedRooms = breakoutRoomManager.getRooms(guild.id);
+  if (storedRooms && storedRooms.length > 0) {
+    // Verify rooms still exist in guild
+    const existingRooms = storedRooms.filter(room => 
+      guild.channels.cache.has(room.id));
+    
+    if (existingRooms.length > 0) {
+      return {
+        exists: true,
+        rooms: existingRooms,
+        source: 'stored'
+      };
+    }
+  }
+  
+  // Fallback: Check for rooms by naming pattern
+  const patternRooms = guild.channels.cache.filter(
+    channel => channel.type === ChannelType.GuildVoice && 
+               channel.name.startsWith("breakout-room-")
+  ).toArray();
+  
+  if (patternRooms.length > 0) {
+    return {
+      exists: true,
+      rooms: patternRooms,
+      source: 'pattern'
+    };
+  }
+  
+  return { exists: false, rooms: [] };
+}
+
+/**
+ * Checks if a distribution is currently active
+ */
+export async function hasActiveDistribution(guildId) {
+  const mainRoom = breakoutRoomManager.getMainRoom(guildId);
+  if (!mainRoom) return false;
+  
+  const rooms = breakoutRoomManager.getRooms(guildId);
+  if (!rooms || rooms.length === 0) return false;
+  
+  // Check if at least one room has members in it
+  return rooms.some(room => room.members && room.members.size > 0);
+}
+
+/**
  * Create breakout rooms with checkpointing
  */
-export async function createBreakoutRooms(interaction, numRooms) {
+export async function createBreakoutRooms(interaction, numRooms, force = false) {
   const guildId = interaction.guildId;
   const operationType = 'create';
   
@@ -15,6 +66,23 @@ export async function createBreakoutRooms(interaction, numRooms) {
   const inProgress = await stateManager.hasOperationInProgress(guildId);
   if (inProgress) {
     return await resumeOperation(interaction);
+  }
+  
+  // Check for existing breakout rooms
+  const existingRooms = await hasExistingBreakoutRooms(interaction.guild);
+  if (existingRooms.exists && !force) {
+    return {
+      success: false,
+      message: `There are already ${existingRooms.rooms.length} breakout rooms in this server. Use '/breakout create' with the force flag set to true to replace them, or '/breakout end' first to clean up existing rooms.`,
+      existingRooms: existingRooms.rooms
+    };
+  }
+  
+  // If force is true and rooms exist, end the current session first
+  if (force && existingRooms.exists) {
+    console.log(`🔄 Force flag enabled, cleaning up ${existingRooms.rooms.length} existing rooms`);
+    const mainChannel = interaction.channel; // Use current channel as fallback
+    await endBreakoutSession(interaction, mainChannel, true);
   }
   
   // Start new operation
@@ -82,7 +150,7 @@ export async function createBreakoutRooms(interaction, numRooms) {
 /**
  * Distribute users to breakout rooms with checkpointing
  */
-export async function distributeToBreakoutRooms(interaction, mainRoom, distribution) {
+export async function distributeToBreakoutRooms(interaction, mainRoom, distribution, force = false) {
   const guildId = interaction.guildId;
   const operationType = 'distribute';
   
@@ -90,6 +158,22 @@ export async function distributeToBreakoutRooms(interaction, mainRoom, distribut
   const inProgress = await stateManager.hasOperationInProgress(guildId);
   if (inProgress) {
     return await resumeOperation(interaction);
+  }
+  
+  // Check if distribution is already active
+  const isDistributionActive = await hasActiveDistribution(guildId);
+  if (isDistributionActive && !force) {
+    return {
+      success: false,
+      message: "Users are already distributed to breakout rooms. Use '/breakout distribute' with the force flag set to true to redistribute, or use '/breakout end' first to end the current session.",
+      currentRooms: breakoutRoomManager.getRooms(guildId)
+    };
+  }
+  
+  // If force is true and distribution is active, end current session first
+  if (force && isDistributionActive) {
+    console.log(`🔄 Force flag enabled, ending current distribution before redistribution`);
+    await endBreakoutSession(interaction, mainRoom, true);
   }
   
   // Store distribution plan for recovery
@@ -186,7 +270,7 @@ export async function distributeToBreakoutRooms(interaction, mainRoom, distribut
 /**
  * End breakout sessions with checkpointing
  */
-export async function endBreakoutSession(interaction, mainChannel) {
+export async function endBreakoutSession(interaction, mainChannel, force = false) {
   const guildId = interaction.guildId;
   const operationType = 'end';
   
@@ -216,13 +300,34 @@ export async function endBreakoutSession(interaction, mainChannel) {
     };
   }
   
+  // Check if any rooms have users in them
+  let hasUsers = false;
+  let totalUsers = 0;
+  
+  for (const room of breakoutRooms) {
+    const guildRoom = interaction.guild.channels.cache.get(room.id);
+    if (guildRoom && guildRoom.members && guildRoom.members.size > 0) {
+      hasUsers = true;
+      totalUsers += guildRoom.members.size;
+    }
+  }
+  
+  // If no users are found and we're not forcing, warn the user
+  if (!hasUsers && !force) {
+    return {
+      success: false,
+      message: `No users found in any breakout rooms. Use '/breakout end' with the force flag set to true if you still want to end the session and delete the rooms.`,
+      rooms: breakoutRooms
+    };
+  }
+  
   // Start new operation
   await stateManager.startOperation(guildId, operationType, {
     mainRoomId: mainChannel.id,
     roomIds: breakoutRooms.map(room => room.id)
   });
   
-  console.log(`🔍 Found ${breakoutRooms.length} breakout room(s) to process.`);
+  console.log(`🔍 Found ${breakoutRooms.length} breakout room(s) to process with ${totalUsers} total users.`);
   
   let totalMoved = 0;
   let totalRooms = breakoutRooms.length;

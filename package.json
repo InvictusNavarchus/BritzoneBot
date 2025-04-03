@@ -4,5 +4,17 @@
     "console-stamp": "^3.1.2",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7"
+  },
+  "name": "britzone-bot",
+  "version": "1.0.0",
+  "description": "Discord bot designed to manage breakout rooms for voice channels",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deployCommandsLocal.js",
+    "dev": "nodemon index.js"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

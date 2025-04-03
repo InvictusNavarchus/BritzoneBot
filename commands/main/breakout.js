@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, CommandInteraction } from "discord.js";
-import safeReply from "../../helpers/safeReply.js";
+import safeReply, { replyOrEdit } from "../../helpers/safeReply.js";
 import isAdmin from "../../helpers/isAdmin.js";
 import distributeUsers from "../../helpers/distributeUsers.js";
 import breakoutRoomManager from "../../helpers/breakoutRoomManager.js";
@@ -191,20 +191,14 @@ async function handleCreateCommand(interaction) {
       const result = await createBreakoutRooms(interaction, numRooms, force);
       
       if (result.success) {
-        await interaction.safeSend({
-          content: result.message,
-        });
+        return replyOrEdit(interaction, result.message);
       } else {
         console.error(`❌ Error creating breakout rooms:`, result.error);
-        await interaction.safeSend({
-          content: result.message,
-        });
+        return replyOrEdit(interaction, result.message);
       }
     } catch (error) {
       console.error(`❌ Error in handleCreateCommand:`, error);
-      await interaction.safeSend({
-        content: "An unexpected error occurred while creating breakout rooms. Please try again later.",
-      });
+      return replyOrEdit(interaction, "An unexpected error occurred while creating breakout rooms. Please try again later.");
     }
   }, { deferReply: true, ephemeral: false });
 }
@@ -236,14 +230,14 @@ async function handleDistributeCommand(interaction) {
     
     if (breakoutRooms.length === 0) {
       console.log(`❌ Error: No breakout rooms found`);
-      return interaction.safeSend('No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
+      return replyOrEdit(interaction, 'No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
     }
     
     const usersInMainRoom = mainRoom.members;
     
     if (usersInMainRoom.size === 0) {
       console.log(`⚠️ No users found in ${mainRoom.name}`);
-      return interaction.safeSend(`There are no users in ${mainRoom.name}.`);
+      return replyOrEdit(interaction, `There are no users in ${mainRoom.name}.`);
     }
 
     // Filter out facilitators before distribution
@@ -257,9 +251,7 @@ async function handleDistributeCommand(interaction) {
     const result = await distributeToBreakoutRooms(interaction, mainRoom, distribution, force);
     
     if (!result.success) {
-      return interaction.safeSend({
-        content: result.message
-      });
+      return replyOrEdit(interaction, result.message);
     }
     
     // Create embed for nice formatting
@@ -307,7 +299,7 @@ async function handleDistributeCommand(interaction) {
     }
     
     console.log(`📤 Sending breakout room results to Discord`);
-    await interaction.safeSend({ embeds: [embed] });
+    return replyOrEdit(interaction, { embeds: [embed] });
   }, { deferReply: true, ephemeral: false });
 }
 
@@ -328,9 +320,7 @@ async function handleEndCommand(interaction) {
       if (!mainChannel) {
         mainChannel = breakoutRoomManager.getMainRoom(interaction.guildId);
         if (!mainChannel) {
-          return interaction.safeSend({
-            content: "Please specify a main voice channel where users should be moved back.",
-          });
+          return replyOrEdit(interaction, "Please specify a main voice channel where users should be moved back.");
         }
       }
       
@@ -339,13 +329,9 @@ async function handleEndCommand(interaction) {
       const result = await endBreakoutSession(interaction, mainChannel, force);
       
       if (result.success) {
-        await interaction.safeSend({
-          content: result.message
-        });
+        return replyOrEdit(interaction, result.message);
       } else {
-        await interaction.safeSend({
-          content: result.message || "Failed to end breakout session."
-        });
+        return replyOrEdit(interaction, result.message || "Failed to end breakout session.");
       }
     },
     { deferReply: true, ephemeral: false }
@@ -366,7 +352,7 @@ async function handleTimerCommand(interaction) {
     
     if (breakoutRooms.length === 0) {
       console.log(`❌ Error: No breakout rooms found`);
-      return interaction.safeSend('No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
+      return replyOrEdit(interaction, 'No breakout rooms found! Please create breakout rooms first with `/breakout create`.');
     }
       
     // Calculate reminder time
@@ -385,9 +371,7 @@ async function handleTimerCommand(interaction) {
     // Start the timer monitoring process
     monitorBreakoutTimer(timerData, interaction);
     
-    await interaction.safeSend({
-      content: `⏱️ Breakout timer set for ${minutes} minutes. Reminder will be sent at 5 minute mark.`
-    });
+    return replyOrEdit(interaction, `⏱️ Breakout timer set for ${minutes} minutes. Reminder will be sent at 5 minute mark.`);
   }, { deferReply: true, ephemeral: false });
 }
 
@@ -418,11 +402,9 @@ async function handleBroadcastCommand(interaction) {
         );
       }
 
-      await interaction.safeSend({ embeds: [embed] });
+      return replyOrEdit(interaction, { embeds: [embed] });
     } else {
-      await interaction.safeSend({
-        content: result.message
-      });
+      return replyOrEdit(interaction, result.message);
     }
   }, { deferReply: true, ephemeral: false });
 }
@@ -441,7 +423,7 @@ async function handleSendMessageCommand(interaction) {
 
     const result = await sendMessageToChannel(channel, message);
 
-    await interaction.safeSend({
+    return replyOrEdit(interaction, {
       content: result.message,
       ephemeral: !result.success
     });

@@ -1,39 +1,6 @@
 import { Events, MessageFlags, CommandInteraction } from 'discord.js';
 import safeReply from '../helpers/safeReply.js';
 
-/**
- * Enhances an interaction with a safeSend method
- * @param {CommandInteraction} interaction - The Discord interaction to patch
- * @returns {CommandInteraction & { safeSend: Function }} The enhanced interaction
- */
-function patchInteraction(interaction) {
-  /**
-   * Safely sends a response to the interaction
-   * @param {import('discord.js').InteractionReplyOptions} options - The reply options
-   * @returns {Promise<import('discord.js').Message|import('discord.js').InteractionResponse|null>}
-   */
-  interaction.safeSend = async function(options) {
-    try {
-      if (this.deferred || this.replied) {
-        return this.editReply(options);
-      } else {
-        return this.reply(options);
-      }
-    } catch (error) {
-      if (error.code === 10062) {
-        console.log(`⏱️ Interaction ${this.id} expired while trying to send a response`);
-        return null;
-      }
-      if (error.code === 'EAI_AGAIN') {
-        console.log(`🌐 Network issue while responding to interaction ${this.id}: ${error.message}`);
-        return null;
-      }
-      throw error;
-    }
-  };
-  return interaction;
-}
-
 export default {
   name: Events.InteractionCreate,
   /**
@@ -66,9 +33,6 @@ export default {
     Command: /${interaction.commandName}
     Options: ${options.length ? options.join(', ') : 'none'}
     Channel: ${interaction.channel?.name} (${interaction.channel?.id})`);
-
-    // Enhance the interaction with our safeSend method
-    patchInteraction(interaction);
 
     // Determine if the command is complex and should be deferred
     // Almost all commands that make API requests should be deferred

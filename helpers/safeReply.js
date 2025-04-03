@@ -56,7 +56,7 @@ async function safeReply(interaction, handler, options = {}) {
         // Try to notify the user if the connection is back
         try {
           if (interaction.deferred && !interaction.replied) {
-            await interaction.editReply({ content: "Network connectivity issue. Please try again later." });
+            await replyOrEdit(interaction, { content: "Network connectivity issue. Please try again later." });
           }
         } catch (notifyError) {
           console.log(`⚠️ Couldn't notify user of network error: ${notifyError.message}`);
@@ -80,11 +80,7 @@ async function safeReply(interaction, handler, options = {}) {
     
     try {
       const errorMessage = 'There was an error while executing this command!';
-      if (interaction.deferred && !interaction.replied) {
-        await interaction.editReply({ content: errorMessage });
-      } else if (!interaction.replied) {
-        await interaction.reply({ content: errorMessage, ephemeral: true });
-      }
+      await replyOrEdit(interaction, { content: errorMessage, ephemeral: true });
     } catch (replyError) {
       // If we can't reply, just log it - nothing more we can do
       console.error('Failed to send error response:', replyError);
@@ -92,6 +88,18 @@ async function safeReply(interaction, handler, options = {}) {
     
     return false;
   }
+}
+
+/**
+ * Replies to an interaction appropriately based on its state (deferred or replied)
+ * @param {import('discord.js').Interaction} interaction - The Discord interaction
+ * @param {string|import('discord.js').InteractionReplyOptions} content - Content to send
+ * @returns {Promise<import('discord.js').Message|import('discord.js').InteractionResponse>}
+ */
+export function replyOrEdit(interaction, content) {
+  return interaction.replied || interaction.deferred
+    ? interaction.editReply(content)
+    : interaction.reply(content);
 }
 
 export default safeReply;

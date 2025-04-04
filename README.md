@@ -24,7 +24,7 @@ Follow these straightforward steps to deploy and configure BritzoneBot on your D
 1.  **Clone the Repository**:
 
     ```sh
-    git clone [https://github.com/InvictusNavarchus/BritzoneBot.git](https://github.com/InvictusNavarchus/BritzoneBot.git)
+    git clone 'https://github.com/InvictusNavarchus/BritzoneBot.git'
     cd BritzoneBot
     ```
 

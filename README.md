@@ -59,7 +59,7 @@ Follow these straightforward steps to deploy and configure BritzoneBot on your D
     *   **Local Command Deployment**: To register the bot's commands within your specified Discord servers, run:
 
         ```sh
-        node deployCommandsLocal.js
+        npm run deploy
         ```
         This script will deploy the commands to the guilds listed in your `guildList.json`.
 
@@ -68,7 +68,7 @@ Follow these straightforward steps to deploy and configure BritzoneBot on your D
     Start the BritzoneBot using the following command:
 
     ```sh
-    node index.js
+    npm run start
     ```
     Ensure your terminal remains running to keep the bot online. For production deployments, consider using process managers like `pm2` or `systemd` to ensure bot uptime and automatic restarts.
 

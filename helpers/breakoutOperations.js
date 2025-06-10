@@ -25,10 +25,10 @@ export async function hasExistingBreakoutRooms(guild) {
   }
   
   // Fallback: Check for rooms by naming pattern
-  const patternRooms = guild.channels.cache.filter(
+  const patternRooms = Array.from(guild.channels.cache.filter(
     channel => channel.type === ChannelType.GuildVoice && 
                channel.name.startsWith("breakout-room-")
-  ).toArray();
+  ).values());
   
   if (patternRooms.length > 0) {
     return {
@@ -285,11 +285,11 @@ export async function endBreakoutSession(interaction, mainChannel, force = false
   
   // If no stored rooms, identify them by name pattern as fallback
   if (!breakoutRooms || breakoutRooms.length === 0) {
-    breakoutRooms = interaction.guild.channels.cache.filter(
+    breakoutRooms = Array.from(interaction.guild.channels.cache.filter(
       (channel) =>
         channel.type === ChannelType.GuildVoice && 
         channel.name.startsWith("breakout-room-")
-    ).toArray();
+    ).values());
   }
   
   if (breakoutRooms.length === 0) {

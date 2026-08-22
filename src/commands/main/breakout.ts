@@ -224,17 +224,23 @@ const command: Command = {
 			return;
 		}
 
-		// Base preflight role check
-		if (interaction.member instanceof GuildMember) {
-			const check = preflightBreakout({ member: interaction.member });
-			if (!check.ok) {
-				await replyOrEdit(interaction, {
-					content:
-						check.reason ?? 'You do not have permission to run this command.',
-					ephemeral: true,
-				});
-				return;
-			}
+		// Base preflight role check — fail closed if member isn't fully hydrated
+		if (!(interaction.member instanceof GuildMember)) {
+			await replyOrEdit(interaction, {
+				content: 'Unable to verify your permissions.',
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const check = preflightBreakout({ member: interaction.member });
+		if (!check.ok) {
+			await replyOrEdit(interaction, {
+				content:
+					check.reason ?? 'You do not have permission to run this command.',
+				ephemeral: true,
+			});
+			return;
 		}
 
 		const subcommand =

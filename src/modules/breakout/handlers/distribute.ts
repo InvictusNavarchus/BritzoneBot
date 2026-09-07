@@ -366,15 +366,24 @@ export async function handleDistributeCommand(
 				...parsedExclude.unrecognized,
 				...parsedFacilitators.unrecognized,
 			];
+			const MAX_REPORTED_TOKENS = 5;
+			const displayedTokens = unrecognized.slice(0, MAX_REPORTED_TOKENS);
+			const remainingCount = unrecognized.length - displayedTokens.length;
+			const formattedTokens = displayedTokens
+				.map(
+					(token) =>
+						`\`${token.length > 20 ? `${token.slice(0, 20)}…` : token}\``,
+				)
+				.join(', ');
+			const tokenSummary =
+				remainingCount > 0
+					? `${formattedTokens}, and ${remainingCount} more`
+					: formattedTokens;
 			const mentionWarning =
 				unrecognized.length > 0
 					? `⚠️ Ignored ${unrecognized.length} unrecognised entr${
 							unrecognized.length === 1 ? 'y' : 'ies'
-						}: ${unrecognized
-							.map((token) => `\`${token}\``)
-							.join(
-								', ',
-							)}. Mention people or roles with @ so Discord sends them as mentions.`
+						}: ${tokenSummary}. Mention people or roles with @ so Discord sends them as mentions.`
 					: undefined;
 
 			if (mentionWarning) {

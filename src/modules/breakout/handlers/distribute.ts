@@ -4,11 +4,11 @@ import {
 	ButtonStyle,
 	type ChatInputCommandInteraction,
 	ComponentType,
-	GuildMember,
+	type GuildMember,
 	type StageChannel,
 	type VoiceChannel,
 } from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction, replyOrEdit } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import { executeDistribute } from '@/modules/breakout/operations/distribute.js';
@@ -262,19 +262,14 @@ export async function handleDistributeCommand(
 				return;
 			}
 
-			if (interaction.member instanceof GuildMember) {
-				const category = mainRoom.parent ?? undefined;
-				const check = preflightBreakout({
-					member: interaction.member,
-					voiceChannel: mainRoom,
-					category,
-					requireUserMove: true,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const check = preflightBreakoutFor(interaction, {
+				voiceChannel: mainRoom,
+				category: mainRoom.parent ?? undefined,
+				requireUserMove: true,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const log = logger.child({

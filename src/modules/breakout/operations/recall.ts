@@ -1,11 +1,10 @@
 import {
 	ChannelType,
 	type CommandInteraction,
-	GuildMember,
 	type VoiceBasedChannel,
 	type VoiceChannel,
 } from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { logger } from '@/lib/logger.js';
 import { moveUserToRoom } from '@/modules/breakout/services/distribution.js';
 import { cancelBreakoutTimer } from '@/modules/breakout/services/timer.js';
@@ -97,24 +96,17 @@ export async function executeRecall(
 		}
 	}
 
-	if (interaction.member instanceof GuildMember) {
-		const check = preflightBreakout({
-			member: interaction.member,
-			voiceChannel: mainChannel,
-			channels: breakoutRooms,
-			requireUserMove: true,
-		});
-
-		if (!check.ok) {
-			log.warn(
-				{ reason: check.reason },
-				'❌ Preflight permission check failed',
-			);
-			return {
-				success: false,
-				message: check.reason ?? 'Permission check failed.',
-			};
-		}
+	const check = preflightBreakoutFor(interaction, {
+		voiceChannel: mainChannel,
+		channels: breakoutRooms,
+		requireUserMove: true,
+	});
+	if (!check.ok) {
+		log.warn({ reason: check.reason }, '❌ Preflight permission check failed');
+		return {
+			success: false,
+			message: check.reason ?? 'Permission check failed.',
+		};
 	}
 
 	if (!isResuming) {

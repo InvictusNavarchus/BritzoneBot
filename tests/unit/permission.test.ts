@@ -1,7 +1,7 @@
 import {
 	type CategoryChannel,
 	type Guild,
-	type GuildMember,
+	GuildMember,
 	PermissionsBitField,
 	type VoiceChannel,
 } from 'discord.js';
@@ -16,6 +16,7 @@ import {
 	getMissingBotPermissions,
 	isBotManager,
 	preflightBreakout,
+	preflightBreakoutFor,
 	reloadPermissionConfig,
 } from '@/lib/discord/permission.js';
 
@@ -290,6 +291,32 @@ describe('Discord Permission Utilities (permission.ts)', () => {
 
 			const result = preflightBreakout({ member, channels: [null, undefined] });
 			expect(result.ok).toBe(true);
+		});
+
+		it('fails closed when the invoking member is not hydrated', () => {
+			// An APIInteractionGuildMember (cache miss) is not a GuildMember, and
+			// the old `if (member instanceof GuildMember)` wrapper skipped the check
+			// entirely in exactly that case.
+			const result = preflightBreakoutFor(
+				{ member: { user: { id: 'user-1' } } },
+				{ requireUserMove: true },
+			);
+
+			expect(result.ok).toBe(false);
+			expect(result.reason).toBe('Unable to verify your permissions.');
+		});
+
+		it('runs the full check for a hydrated member', () => {
+			const me = { id: 'bot-1', permissions: { has: () => true } };
+			const member = {
+				id: 'owner-999',
+				guild: { id: 'guild-1', ownerId: 'owner-999', members: { me } },
+				roles: { cache: { has: () => false } },
+				permissions: { has: () => true },
+			} as unknown as GuildMember;
+			Object.setPrototypeOf(member, GuildMember.prototype);
+
+			expect(preflightBreakoutFor({ member }).ok).toBe(true);
 		});
 
 		it('succeeds for owner bypass', () => {

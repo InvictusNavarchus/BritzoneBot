@@ -1,9 +1,5 @@
-import {
-	type ChatInputCommandInteraction,
-	GuildMember,
-	type VoiceChannel,
-} from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import type { ChatInputCommandInteraction, VoiceChannel } from 'discord.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import { sendMessageToChannel } from '@/modules/breakout/services/message.js';
@@ -23,16 +19,12 @@ export async function handleSendMessageCommand(
 			) as VoiceChannel;
 			const message = interaction.options.getString('message', true);
 
-			if (interaction.member instanceof GuildMember) {
-				const check = preflightBreakout({
-					member: interaction.member,
-					textChannel: channel,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const check = preflightBreakoutFor(interaction, {
+				textChannel: channel,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const log = logger.child({

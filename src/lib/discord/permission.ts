@@ -2,7 +2,7 @@ import {
 	type CategoryChannel,
 	type Guild,
 	type GuildBasedChannel,
-	type GuildMember,
+	GuildMember,
 	type GuildTextBasedChannel,
 	PermissionsBitField,
 	type StageChannel,
@@ -295,4 +295,30 @@ export function preflightBreakout(
 	}
 
 	return { ok: true };
+}
+
+/**
+ * Runs {@link preflightBreakout} for the member who invoked an interaction,
+ * failing closed when that member is not fully hydrated.
+ *
+ * Handlers previously wrote `if (interaction.member instanceof GuildMember)`
+ * around their permission check, which skips the check entirely when the
+ * cache misses — precisely the case where verification matters most. Wrapping
+ * it here means the resource-specific checks cannot accidentally be written
+ * fail-open, and every caller reports the same reason when they cannot be
+ * verified.
+ */
+export function preflightBreakoutFor(
+	interaction: { member: unknown },
+	opts: Omit<BreakoutPreflightOptions, 'member'> = {},
+	guildConfigMap?: GuildRoleConfigMap,
+): BreakoutPreflightResult {
+	if (!(interaction.member instanceof GuildMember)) {
+		return { ok: false, reason: 'Unable to verify your permissions.' };
+	}
+
+	return preflightBreakout(
+		{ member: interaction.member, ...opts },
+		guildConfigMap ?? loadGuildConfig(),
+	);
 }

@@ -1,5 +1,5 @@
-import { type ChatInputCommandInteraction, GuildMember } from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import type { ChatInputCommandInteraction } from 'discord.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import {
@@ -75,18 +75,14 @@ export async function handleTimerCommand(
 			const mainRoom = getMainRoom(guild);
 			const breakoutRooms = getRooms(guild);
 
-			if (interaction.member instanceof GuildMember) {
-				const check = preflightBreakout({
-					member: interaction.member,
-					voiceChannel: mainRoom,
-					channels: breakoutRooms,
-					requireUserMove: autoRecallOption && !!mainRoom,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const check = preflightBreakoutFor(interaction, {
+				voiceChannel: mainRoom,
+				channels: breakoutRooms,
+				requireUserMove: autoRecallOption && !!mainRoom,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const log = logger.child({

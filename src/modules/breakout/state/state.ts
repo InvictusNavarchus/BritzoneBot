@@ -132,11 +132,16 @@ let inMemoryState: Record<string, GuildState> = {};
 let initialized: boolean = false;
 let initPromise: Promise<void> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
+let pendingSaveTimer: NodeJS.Timeout | null = null;
 
 /**
  * Resets the in-memory state and initialized flag for testing
  */
 export function resetStateForTest(): void {
+	if (pendingSaveTimer) {
+		clearTimeout(pendingSaveTimer);
+		pendingSaveTimer = null;
+	}
 	inMemoryState = {};
 	initialized = false;
 	initPromise = null;
@@ -222,7 +227,6 @@ async function loadState(): Promise<void> {
  * repeat on resume.
  */
 const SAVE_DEBOUNCE_MS = 250;
-let pendingSaveTimer: NodeJS.Timeout | null = null;
 
 async function saveState(): Promise<void> {
 	if (pendingSaveTimer) {

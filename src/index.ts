@@ -11,10 +11,12 @@ import path from 'node:path';
 import { Client, Collection, GatewayIntentBits, RESTEvents } from 'discord.js';
 import { releaseDistributedLock } from '@/lib/distributedLock.js';
 import { logger } from '@/lib/logger.js';
+import { listModuleFiles, moduleExtensionOf } from '@/lib/moduleFiles.js';
 import { flushState, initializeState } from '@/modules/breakout/state/state.js';
 import type { BritzoneClient, Command, Event } from '@/types/index.js';
 
 const __dirname = import.meta.dirname;
+const moduleExtension = moduleExtensionOf(import.meta.url);
 
 // ============================================================================
 // LOGGING SETUP
@@ -85,9 +87,7 @@ const commandFolders = fs.readdirSync(foldersPath);
 
 for (const folder of commandFolders) {
 	const commandsPath = path.join(foldersPath, folder);
-	const commandFiles = fs
-		.readdirSync(commandsPath)
-		.filter((file) => file.endsWith('.js'));
+	const commandFiles = listModuleFiles(commandsPath, moduleExtension);
 
 	for (const file of commandFiles) {
 		const filePath = path.join(commandsPath, file);
@@ -120,9 +120,7 @@ for (const folder of commandFolders) {
 logger.info('🎉 Loading events...');
 
 const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs
-	.readdirSync(eventsPath)
-	.filter((file) => file.endsWith('.js'));
+const eventFiles = listModuleFiles(eventsPath, moduleExtension);
 
 for (const file of eventFiles) {
 	const filePath = path.join(eventsPath, file);

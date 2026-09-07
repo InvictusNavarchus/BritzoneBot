@@ -9,9 +9,11 @@ import {
 import pino from 'pino';
 import { type GuildConfig, loadGuildConfig } from '@/lib/guildConfig.js';
 import { logger } from '@/lib/logger.js';
+import { listModuleFiles, moduleExtensionOf } from '@/lib/moduleFiles.js';
 import type { Command } from '@/types/index.js';
 
 const __dirname = import.meta.dirname;
+const moduleExtension = moduleExtensionOf(import.meta.url);
 
 const { BOT_ID, TOKEN } = process.env;
 
@@ -42,9 +44,7 @@ const commandFolders = fs.readdirSync(foldersPath);
 for (const folder of commandFolders) {
 	// Grab all the command files from the commands directory
 	const commandsPath = path.join(foldersPath, folder);
-	const commandFiles = fs
-		.readdirSync(commandsPath)
-		.filter((file) => file.endsWith('.js'));
+	const commandFiles = listModuleFiles(commandsPath, moduleExtension);
 	logger.info(`loading commands from ${folder}/`);
 	logger.debug({ commandFiles }, 'Found command files');
 

@@ -167,9 +167,12 @@ BritzoneBot offers a suite of slash commands to manage breakout rooms. All break
 |              |                |                                                                    | `facilitators` *(String, Optional)* – User mentions to assign into breakout rooms first (one per room when possible). |
 | `/breakout`  | `recall`       | Moves all members from breakout rooms back to the main voice channel. Breakout rooms remain intact. | `mainroom` *(Voice/Stage Channel, Required)* – The destination channel. |
 | `/breakout`  | `delete`       | Deletes all breakout room channels.                                | None |
-| `/breakout`  | `timer`        | Sets or cancels a countdown timer for the breakout session. Sends periodic reminders and handles auto-recall on expiration. | `minutes` *(String, Required)* – Duration preset in minutes (30, 45, 60, 90, 0.05 testing, or `Cancel active timer`). |
+| `/breakout`  | `timer`        | Sets a countdown timer for the breakout session. Sends periodic reminders and handles auto-recall on expiration. | `minutes` *(String, Optional)* – Duration preset: 20, 30, 45, 60, 90 minutes, or 3 seconds (testing). |
+|              |                |                                                                    | `custom_minutes` *(Integer, Optional)* – Custom duration, minimum 30 minutes. Takes precedence over `minutes`. |
 |              |                |                                                                    | `auto_recall` *(Boolean, Optional)* – Automatically recall members to main room when time is up (default: `true`). |
 |              |                |                                                                    | `grace_period` *(Integer, Optional)* – Grace period in seconds before auto-recalling members (0–300s, default: `60s`). |
+| `/breakout`  | `timer-cancel` | Cancels the active breakout session timer.                         | None |
+| `/breakout`  | `status`       | Displays current breakout rooms, timer state and any operation in progress. | None |
 | `/breakout`  | `broadcast`    | Broadcasts a message to all active breakout rooms.                 | `message` *(String, Required)* – The message content. |
 | `/breakout`  | `send-message` | Sends a message to a specific voice channel's text chat.           | `channel` *(Voice Channel, Required)* – Target channel. |
 |              |                |                                                                    | `message` *(String, Required)* – The message content. |
@@ -221,7 +224,12 @@ When you run `/breakout distribute`, the bot:
 1. Calculates a randomized round-robin assignment (facilitators first, then regular members).
 2. Displays a **preview embed** showing exactly who will go to which room.
 3. Presents **Confirm** / **Cancel** buttons (60-second timeout).
-4. Only after confirmation does it begin moving members.
+4. Only after confirmation does it begin moving members, with the handler's time budget restarted so a slow decision cannot make the move itself look like a failure.
+
+`exclude` and `facilitators` accept both user mentions (`@someone`) and role
+mentions (`@Facilitators`); a role expands to its members currently in voice.
+Anything that is not a real mention — a name typed by hand, for instance — is
+reported on the preview rather than silently ignored.
 
 This prevents accidental mass-moves and gives moderators a chance to review the plan.
 
@@ -229,9 +237,9 @@ This prevents accidental mass-moves and gives moderators a chance to review the 
 
 The `/breakout timer` command provides automated schedule tracking and auto-recall for breakout sessions:
 
-- **Presets & Periodic Reminders**: Choose from preset durations (30, 45, 60, or 90 minutes). The bot automatically calculates and sends targeted reminder messages to each breakout channel at milestone thresholds (e.g. 15m, 5m remaining).
+- **Presets & Periodic Reminders**: Choose from preset durations (20, 30, 45, 60, or 90 minutes, plus a 3-second preset for testing), or set any custom duration of 30 minutes or more with `custom_minutes`. The bot sends targeted reminder messages to each breakout channel at that preset's milestone thresholds (e.g. 15m, 5m remaining); custom durations get `[min(30, ⅔ D), 10m, 5m]`. Presets and their reminder schedules are defined in one lookup table, so the choices offered and the durations accepted cannot drift apart.
 - **Auto-Recall & Grace Period**: When `auto_recall` is enabled (`true` by default), a live countdown timestamp (`<t:unix:R>`) is displayed in text channels during the grace period (default: `60s`) before members are moved back to the main voice channel.
-- **Timer Cancellation & Replacement**: An active timer can be canceled manually using `minutes: Cancel active timer`, or automatically when running `/breakout recall` or `/breakout delete`. When a timer is replaced or canceled, active countdown messages and pending reminders are cleanly deleted from the channels.
+- **Timer Cancellation & Replacement**: An active timer can be canceled manually with `/breakout timer-cancel`, or automatically when running `/breakout recall` or `/breakout delete`. Cancelling or replacing a timer clears its pending reminders and removes the live grace-period countdown, whose relative timestamp would otherwise be stale. Reminders already sent ("15 minutes remaining") stay in the rooms as a record of what participants were told.
 
 ## 🤝 Contributing
 

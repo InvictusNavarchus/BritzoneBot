@@ -169,6 +169,7 @@ export async function initializeState(): Promise<void> {
 				logger.info('📂 StateManager initialized');
 			} catch (error) {
 				logger.error({ err: error }, '❌ Failed to initialize StateManager');
+				throw error;
 			} finally {
 				initPromise = null;
 			}

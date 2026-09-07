@@ -1,7 +1,18 @@
 # Docker / Pino Logging Crash Investigation Report
 
 **Date:** 2026-02-17  
-**Status:** Unresolved / Deferred  
+**Status:** Superseded — retained as background only (see *Current State* below)  
+
+> **Current state (2026-09-07).** This report no longer describes the shipped
+> configuration. Docker was deprecated and removed from the project in
+> `ce4b8f9`, and the bot now runs under pm2 with Bun on Linux, where the worker
+> thread instability documented here does not reproduce. The `pino-roll`
+> transport is **enabled** in `src/lib/logger.ts` and working.
+>
+> The conclusion below stated that file logging had been "commented out/reverted",
+> which contradicted the code for several releases. That claim is corrected in
+> *Conclusion for this PR*. The analysis of the Docker/Alpine failure is kept
+> because it stays relevant if the project is ever containerised again.
 
 ## Problem Statement
 
@@ -45,4 +56,13 @@ To resolve this without giving up on file logging:
 
 ## Conclusion for this PR
 
-This PR successfully migrates the codebase from `console.log` to `pino`. The file logging configuration has been commented out/reverted to prevent crashes in production Docker builds until the runtime instability is addressed.
+This PR successfully migrates the codebase from `console.log` to `pino`. At the
+time, the file logging configuration was reverted to prevent crashes in
+production Docker builds until the runtime instability could be addressed.
+
+**This no longer holds.** Docker was dropped from the project, and on the
+current pm2 + Bun + Linux target the `pino-roll` transport runs without issue.
+File logging to `./log/app.log` (daily rotation, 7 files retained) is enabled in
+`src/lib/logger.ts` and is the intended configuration. Option 2 above
+(stdout-only, external rotation) remains the path to take if the bot is ever
+containerised again.

@@ -15,22 +15,11 @@ import { executeDistribute } from '@/modules/breakout/operations/distribute.js';
 import { getRooms } from '@/modules/breakout/state/state.js';
 import { distributeUsers } from '@/modules/breakout/utils/distribution.js';
 import { buildDistributionEmbed } from '@/modules/breakout/utils/embeds.js';
+import {
+	parseMentions,
+	resolveMentionedUserIds,
+} from '@/modules/breakout/utils/mentions.js';
 import type { OperationResult } from '@/types/index.js';
-
-/**
- * Parses user mention IDs (<@123456789>) from command string input.
- */
-function parseMentionedUserIds(input: string | null): Set<string> {
-	const userIds = new Set<string>();
-	if (!input) return userIds;
-
-	const mentionPattern = /<@!?(\d+)>/g;
-	const matches = input.matchAll(mentionPattern);
-	for (const match of matches) {
-		userIds.add(match[1]);
-	}
-	return userIds;
-}
 
 /**
  * Partitions target voice channel members into facilitator and regular participant lists.
@@ -69,6 +58,7 @@ async function runDistributionCollector(params: {
 	previewEmbed: import('discord.js').EmbedBuilder;
 	confirmButton: ButtonBuilder;
 	cancelButton: ButtonBuilder;
+	mentionWarning?: string;
 	log: typeof logger;
 }): Promise<void> {
 	const {
@@ -82,6 +72,7 @@ async function runDistributionCollector(params: {
 		previewEmbed,
 		confirmButton,
 		cancelButton,
+		mentionWarning,
 		log,
 	} = params;
 
@@ -92,6 +83,7 @@ async function runDistributionCollector(params: {
 
 	log.info('📤 Sending preview with confirmation buttons');
 	const response = await ctx.reply({
+		...(mentionWarning ? { content: mentionWarning } : {}),
 		embeds: [previewEmbed],
 		components: [row],
 	});
@@ -279,20 +271,12 @@ export async function handleDistributeCommand(
 			});
 			log.info('🎯 Main room selected');
 
-			const excludedUsers = parseMentionedUserIds(
+			const parsedExclude = parseMentions(
 				interaction.options.getString('exclude'),
 			);
-			const rawFacilitators = parseMentionedUserIds(
+			const parsedFacilitators = parseMentions(
 				interaction.options.getString('facilitators'),
 			);
-
-			// Facilitators: Exclude takes precedence
-			const facilitators = new Set<string>();
-			for (const facId of rawFacilitators) {
-				if (!excludedUsers.has(facId)) {
-					facilitators.add(facId);
-				}
-			}
 
 			const guild = interaction.guild;
 			if (!guild) return;
@@ -325,6 +309,44 @@ export async function handleDistributeCommand(
 					`There are no users in ${mainRoom.name} or breakout rooms to distribute.`,
 				);
 				return;
+			}
+
+			// Role mentions are expanded against the pool of members actually in
+			// voice, so a role resolves to the people who can be distributed.
+			const excludedUsers = resolveMentionedUserIds(
+				parsedExclude,
+				allTargetMembers.values(),
+			);
+			const rawFacilitators = resolveMentionedUserIds(
+				parsedFacilitators,
+				allTargetMembers.values(),
+			);
+
+			// Facilitators: Exclude takes precedence
+			const facilitators = new Set<string>();
+			for (const facId of rawFacilitators) {
+				if (!excludedUsers.has(facId)) {
+					facilitators.add(facId);
+				}
+			}
+
+			const unrecognized = [
+				...parsedExclude.unrecognized,
+				...parsedFacilitators.unrecognized,
+			];
+			const mentionWarning =
+				unrecognized.length > 0
+					? `⚠️ Ignored ${unrecognized.length} unrecognised entr${
+							unrecognized.length === 1 ? 'y' : 'ies'
+						}: ${unrecognized
+							.map((token) => `\`${token}\``)
+							.join(
+								', ',
+							)}. Mention people or roles with @ so Discord sends them as mentions.`
+					: undefined;
+
+			if (mentionWarning) {
+				log.warn({ unrecognized }, '⚠️ Unparsed mention tokens in options');
 			}
 
 			const { facilitatorMembers, regularMembers } = partitionMembers(
@@ -380,6 +402,7 @@ export async function handleDistributeCommand(
 				previewEmbed,
 				confirmButton,
 				cancelButton,
+				mentionWarning,
 				log,
 			});
 		},

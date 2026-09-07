@@ -8,6 +8,7 @@ import {
 	type StageChannel,
 	type VoiceChannel,
 } from 'discord.js';
+import { trackInteractivePrompt } from '@/lib/discord/components.js';
 import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction, replyOrEdit } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
@@ -20,6 +21,10 @@ import {
 	resolveMentionedUserIds,
 } from '@/modules/breakout/utils/mentions.js';
 import type { OperationResult } from '@/types/index.js';
+
+/** Shown in place of a prompt that a restart left unusable. */
+const SHUTDOWN_PROMPT_NOTE =
+	'⚠️ The bot restarted while this prompt was open, so it can no longer be used. Run the command again — `/breakout status` will show the current state first.';
 
 /**
  * Partitions target voice channel members into facilitator and regular participant lists.
@@ -91,6 +96,15 @@ async function runDistributionCollector(params: {
 	const collector = response.createMessageComponentCollector({
 		componentType: ComponentType.Button,
 		time: 60_000,
+	});
+
+	const untrack = trackInteractivePrompt(async () => {
+		collector.stop('shutdown');
+		await ctx.editReply({
+			content: SHUTDOWN_PROMPT_NOTE,
+			embeds: [previewEmbed],
+			components: [],
+		});
 	});
 
 	return new Promise<void>((resolve) => {
@@ -217,6 +231,14 @@ async function runDistributionCollector(params: {
 		});
 
 		collector.on('end', async (_, reason) => {
+			untrack();
+
+			if (reason === 'shutdown') {
+				log.warn('🛑 Distribution preview closed by shutdown');
+				resolve();
+				return;
+			}
+
 			if (reason !== 'confirmed' && reason !== 'cancelled') {
 				log.warn('⏱️ Distribution preview confirmation timed out');
 				const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(

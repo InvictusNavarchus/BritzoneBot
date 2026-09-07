@@ -9,6 +9,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Client, Collection, GatewayIntentBits, RESTEvents } from 'discord.js';
+import { disableActivePrompts } from '@/lib/discord/components.js';
 import { releaseDistributedLock } from '@/lib/distributedLock.js';
 import { logger } from '@/lib/logger.js';
 import { listModuleFiles, moduleExtensionOf } from '@/lib/moduleFiles.js';
@@ -184,6 +185,11 @@ const handleShutdown = async (signal: string) => {
 	forceExitTimeout.unref();
 
 	try {
+		// Neutralise open Confirm/Cancel prompts first: their collectors die with
+		// this process, and a click afterwards would only produce Discord's bare
+		// "This interaction failed".
+		await disableActivePrompts();
+
 		await releaseDistributedLock();
 		client.destroy();
 		logger.info('🔌 Discord client destroyed.');

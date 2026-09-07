@@ -5,8 +5,13 @@ import {
 	type ChatInputCommandInteraction,
 	ComponentType,
 } from 'discord.js';
+import { trackInteractivePrompt } from '@/lib/discord/components.js';
 import { replyOrEdit } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
+
+/** Shown in place of a prompt that a restart left unusable. */
+const SHUTDOWN_PROMPT_NOTE =
+	'⚠️ The bot restarted while this prompt was open, so it can no longer be used. Run the command again — `/breakout status` will show the current state first.';
 
 export interface ConfirmActionOptions {
 	interaction: ChatInputCommandInteraction;
@@ -67,6 +72,14 @@ export async function confirmAction(
 		time: timeMs,
 	});
 
+	const untrack = trackInteractivePrompt(async () => {
+		collector.stop('shutdown');
+		await interaction.editReply({
+			content: SHUTDOWN_PROMPT_NOTE,
+			components: [],
+		});
+	});
+
 	return new Promise<boolean>((resolve) => {
 		collector.on('collect', async (i) => {
 			try {
@@ -112,6 +125,13 @@ export async function confirmAction(
 		});
 
 		collector.on('end', async (_, reason) => {
+			untrack();
+
+			if (reason === 'shutdown') {
+				resolve(false);
+				return;
+			}
+
 			if (reason !== 'confirmed' && reason !== 'cancelled') {
 				try {
 					await interaction.editReply({

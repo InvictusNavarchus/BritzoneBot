@@ -360,9 +360,19 @@ describe('StateManager (state.ts)', () => {
 
 		it('retries initialization after a failure instead of caching it', async () => {
 			resetStateForTest();
-			process.env.STATE_FILE = path.join(tempDir, 'nested', 'state.json');
-			process.env.STATE_DIR = path.join(tempDir, 'nested');
 
+			// Inject a failure: point STATE_DIR at a path occupied by a file so
+			// fs.mkdir rejects and initializeState's init memo is cleared.
+			const blockedDir = path.join(tempDir, 'blocked');
+			await fs.writeFile(blockedDir, 'not a directory');
+			process.env.STATE_DIR = blockedDir;
+			process.env.STATE_FILE = path.join(blockedDir, 'state.json');
+			await expect(getAllGuildStates()).rejects.toThrow();
+
+			// Recover to a valid path; the next call must retry rather than reuse
+			// the failed initialization.
+			process.env.STATE_DIR = path.join(tempDir, 'nested');
+			process.env.STATE_FILE = path.join(tempDir, 'nested', 'state.json');
 			await setMainRoomId('guild-retry', 'main-1');
 			const allStates = await getAllGuildStates();
 			expect(allStates['guild-retry']?.session?.mainRoomId).toBe('main-1');

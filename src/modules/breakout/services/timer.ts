@@ -7,6 +7,10 @@ import type {
 	VoiceChannel,
 } from 'discord.js';
 import type { Logger } from 'pino';
+import {
+	getDiscordErrorCode,
+	isPermanentDiscordFailure,
+} from '@/lib/discord/errors.js';
 import { logger } from '@/lib/logger.js';
 import {
 	formatReminderMessage,
@@ -410,6 +414,23 @@ async function sendReminderWithRetry(
 				log.info({ channel: textChannel.name }, `✅ Reminder sent`);
 			} catch (error) {
 				attempts++;
+
+				// A deleted channel or a missing permission fails identically on
+				// every attempt. Retrying it burns the backoff budget inside a
+				// setTimeout callback and stalls every room queued behind this one —
+				// ten misconfigured rooms would block for minutes.
+				if (isPermanentDiscordFailure(error)) {
+					log.error(
+						{
+							err: error,
+							code: getDiscordErrorCode(error),
+							channel: textChannel.name,
+						},
+						`❌ Reminder cannot be delivered to this room; not retrying`,
+					);
+					break;
+				}
+
 				log.error(
 					{
 						err: error,
@@ -431,8 +452,8 @@ async function sendReminderWithRetry(
 
 		if (!success) {
 			log.error(
-				{ channel: textChannel.name, maxRetries },
-				`❌ Failed to send reminder after max attempts`,
+				{ channel: textChannel.name, attempts },
+				`❌ Gave up sending reminder to room`,
 			);
 		}
 	}

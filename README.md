@@ -126,7 +126,7 @@ When inviting the bot or configuring its role in your Discord server, grant the 
 | **Breakout Rooms** | `Manage Channels` | Dynamically create and delete breakout voice channels. |
 | | `Move Members` | Move participants into breakout rooms and recall them to the main room. |
 | | `Connect` | Manage voice channels within categories via Discord REST API. |
-| | `Manage Messages` | Clean up active countdown and periodic reminder messages when expired or cancelled. |
+| | `Manage Messages` | Clean up active countdown messages when expired or cancelled. |
 
 > [!TIP]
 > **Calculated Permission Integer**: `286349328` (`0x110FB410`)  
@@ -176,7 +176,7 @@ BritzoneBot offers a suite of slash commands to manage breakout rooms. All break
 | `/breakout`  | `broadcast`    | Broadcasts a message to all active breakout rooms.                 | `message` *(String, Required)* – The message content. |
 | `/breakout`  | `send-message` | Sends a message to a specific voice channel's text chat.           | `channel` *(Voice Channel, Required)* – Target channel. |
 |              |                |                                                                    | `message` *(String, Required)* – The message content. |
-| `/breakout`  | `reset`        | Clears a stuck operation record so other subcommands can run again. Rooms, members and timers are left untouched. | None |
+| `/breakout`  | `reset`        | Clears a stuck operation record so other subcommands can run again. Rooms, members and timers are left untouched. Re-run `bun run deploy` after upgrading to register this subcommand. | None |
 
 ### 🛠️ Utility Commands
 
@@ -209,13 +209,14 @@ lock indefinitely. Three things prevent that from stranding a session:
   `broadcast`, `send-message` and `reset` run regardless of what is in
   progress, so the tools you need to diagnose and recover stay available.
 - **Abandoned operations expire.** An operation that records no checkpoint for
-  10 minutes is discarded automatically on the next command. Staleness is
-  measured from the last checkpoint, so a slow operation that is still making
-  progress is never cut short.
+  10 minutes is discarded automatically before the next room-mutating command.
+  Staleness is measured from the last checkpoint, so a slow operation that is
+  still making progress is never cut short.
 - **`/breakout reset` clears it immediately** when you do not want to wait. It
   removes only the operation record — rooms, members and any active timer are
-  untouched — so it is safe to run when unsure. Follow it with
-  `/breakout status` to see what actually exists.
+  untouched, but all resume checkpoints are discarded. Use it once you have
+  confirmed the prior operation has halted, then follow with `/breakout status`
+  to see what exists.
 
 ## 📋 Distribution Preview
 
@@ -223,6 +224,7 @@ When you run `/breakout distribute`, the bot:
 
 1. Calculates a randomized round-robin assignment (facilitators first, then regular members).
 2. Displays a **preview embed** showing exactly who will go to which room.
+   You can specify exclusions (`exclude:@user`) and assign dedicated facilitators (`facilitators:@user`).
 3. Presents **Confirm** / **Cancel** buttons (60-second timeout).
 4. Only after confirmation does it begin moving members, with the handler's time budget restarted so a slow decision cannot make the move itself look like a failure.
 
@@ -237,7 +239,7 @@ This prevents accidental mass-moves and gives moderators a chance to review the 
 
 The `/breakout timer` command provides automated schedule tracking and auto-recall for breakout sessions:
 
-- **Presets & Periodic Reminders**: Choose from preset durations (20, 30, 45, 60, or 90 minutes, plus a 3-second preset for testing), or set any custom duration of 30 minutes or more with `custom_minutes`. The bot sends targeted reminder messages to each breakout channel at that preset's milestone thresholds (e.g. 15m, 5m remaining); custom durations get `[min(30, ⅔ D), 10m, 5m]`. Presets and their reminder schedules are defined in one lookup table, so the choices offered and the durations accepted cannot drift apart.
+- **Presets & Periodic Reminders**: Choose from preset durations (20, 30, 45, 60, or 90 minutes, plus a 3-second preset for testing), or set any custom duration of 30 minutes or more with `custom_minutes`. The bot sends targeted reminder messages to each breakout channel at that preset's milestone thresholds (e.g. 15m, 5m remaining); custom durations get `[round(min(30, ⅔ D)), 10m, 5m]`. Presets and their reminder schedules are defined in one lookup table, so the choices offered and the durations accepted cannot drift apart.
 - **Auto-Recall & Grace Period**: When `auto_recall` is enabled (`true` by default), a live countdown timestamp (`<t:unix:R>`) is displayed in text channels during the grace period (default: `60s`) before members are moved back to the main voice channel.
 - **Timer Cancellation & Replacement**: An active timer can be canceled manually with `/breakout timer-cancel`, or automatically when running `/breakout recall` or `/breakout delete`. Cancelling or replacing a timer clears its pending reminders and removes the live grace-period countdown, whose relative timestamp would otherwise be stale. Reminders already sent ("15 minutes remaining") stay in the rooms as a record of what participants were told.
 

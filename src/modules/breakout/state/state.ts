@@ -369,6 +369,59 @@ export async function completeOperation(guildId: string): Promise<void> {
 }
 
 /**
+ * How long an operation may sit without recording a step before it is treated
+ * as abandoned.
+ *
+ * Comfortably above the 120s handler timeout that bounds the longest real
+ * operation, so a slow-but-live run is never mistaken for a wedged one.
+ */
+export const OPERATION_STALE_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Returns whether an operation has gone quiet long enough to be abandoned.
+ *
+ * Measured from the most recent checkpoint rather than the start time, so a
+ * long operation that is still making progress stays live.
+ */
+export function isOperationStale(
+	operation: CurrentOperation,
+	now: number = Date.now(),
+): boolean {
+	const stepTimes = Object.values(operation.progress.steps).map(
+		(step) => step.timestamp,
+	);
+	const lastActivity = Math.max(operation.progress.startTime, ...stepTimes);
+	return now - lastActivity > OPERATION_STALE_AFTER_MS;
+}
+
+/**
+ * Discards the current operation without archiving it to history.
+ *
+ * This is the recovery path for an operation that was interrupted and will
+ * never complete; a completed operation should go through
+ * {@link completeOperation} instead.
+ *
+ * @returns The discarded operation, or undefined if there was none.
+ */
+export async function clearCurrentOperation(
+	guildId: string,
+): Promise<CurrentOperation | undefined> {
+	await initializeState();
+	const guildState = inMemoryState[guildId];
+	const cleared = guildState?.currentOperation;
+
+	if (!cleared) return undefined;
+
+	delete guildState.currentOperation;
+	logger.info(
+		{ guildId, operationType: cleared.type },
+		'🧹 Discarded interrupted breakout operation',
+	);
+	await saveState();
+	return cleared;
+}
+
+/**
  * Check if operation is in progress
  */
 export async function hasOperationInProgress(

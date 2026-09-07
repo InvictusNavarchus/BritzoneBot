@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+	clearCurrentOperation,
 	clearSession,
 	clearTimerData,
 	completeOperation,
@@ -12,6 +13,8 @@ import {
 	getCurrentOperation,
 	getTimerData,
 	hasOperationInProgress,
+	isOperationStale,
+	OPERATION_STALE_AFTER_MS,
 	resetStateForTest,
 	setMainRoomId,
 	setTimerData,
@@ -172,6 +175,53 @@ describe('StateManager (state.ts)', () => {
 
 			const afterClear = await getTimerData(guildId);
 			expect(afterClear).toBeNull();
+		});
+	});
+
+	describe('stale operation expiry', () => {
+		it('treats a long-quiet operation as stale', async () => {
+			const guildId = 'guild-stale';
+			await startOperation(guildId, 'delete', {});
+			const operation = await getCurrentOperation(guildId);
+			if (!operation) throw new Error('expected a tracked operation');
+
+			expect(isOperationStale(operation)).toBe(false);
+			expect(
+				isOperationStale(operation, Date.now() + OPERATION_STALE_AFTER_MS + 1),
+			).toBe(true);
+		});
+
+		it('measures staleness from the last checkpoint, not the start time', async () => {
+			const guildId = 'guild-stale-progress';
+			await startOperation(guildId, 'distribute', {});
+			await updateProgress(guildId, 'member_moved_1');
+			const operation = await getCurrentOperation(guildId);
+			if (!operation) throw new Error('expected a tracked operation');
+
+			// Well past the window measured from startTime, but the checkpoint is
+			// recent, so a slow-but-live operation is not expired out from under it.
+			const justAfterCheckpoint =
+				operation.progress.steps.member_moved_1.timestamp +
+				OPERATION_STALE_AFTER_MS -
+				1;
+			expect(isOperationStale(operation, justAfterCheckpoint)).toBe(false);
+		});
+
+		it('clearCurrentOperation discards without archiving to history', async () => {
+			const guildId = 'guild-clear-op';
+			await startOperation(guildId, 'create', { numRooms: 3 });
+			await updateProgress(guildId, 'create_room_1');
+
+			const cleared = await clearCurrentOperation(guildId);
+
+			expect(cleared?.type).toBe('create');
+			expect(await hasOperationInProgress(guildId)).toBe(false);
+			const allStates = await getAllGuildStates();
+			expect(allStates[guildId]?.history ?? []).toHaveLength(0);
+		});
+
+		it('clearCurrentOperation is a no-op when nothing is in progress', async () => {
+			expect(await clearCurrentOperation('guild-nothing')).toBeUndefined();
 		});
 	});
 

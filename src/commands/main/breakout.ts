@@ -24,8 +24,11 @@ import {
 } from '@/modules/breakout/handlers/index.js';
 import {
 	type BreakoutSubcommand,
+	clearCurrentOperation,
 	getCurrentOperation,
 	hasOperationInProgress,
+	isOperationStale,
+	OPERATION_STALE_AFTER_MS,
 } from '@/modules/breakout/state/state.js';
 import type { Command } from '@/types/index.js';
 
@@ -267,18 +270,27 @@ const command: Command = {
 			if (inProgress) {
 				const currentOp = await getCurrentOperation(interaction.guildId);
 
-				if (currentOp && currentOp.type !== subcommand) {
+				// An operation that has recorded nothing for a long time is not in
+				// progress, it is abandoned — most likely the process died mid-run.
+				// Expiring it here means the lock heals itself instead of requiring
+				// intervention.
+				if (currentOp && isOperationStale(currentOp)) {
+					log.warn(
+						{ currentType: currentOp.type, requestedType: subcommand },
+						'🧹 Expiring stale operation before running requested subcommand',
+					);
+					await clearCurrentOperation(interaction.guildId);
+				} else if (currentOp && currentOp.type !== subcommand) {
 					log.warn(
 						{ currentType: currentOp.type, requestedType: subcommand },
 						'⚠️ Found interrupted operation, but user requested different type',
 					);
 					await replyOrEdit(interaction, {
-						content: `There is an interrupted '${currentOp.type}' operation in progress. Please finish it or clear it before starting a '${subcommand}' operation.`,
+						content: `There is an interrupted '${currentOp.type}' operation in progress. Re-run \`/breakout ${currentOp.type}\` to resume it, or wait ${OPERATION_STALE_AFTER_MS / 60_000} minutes without progress for it to expire on its own.`,
 						ephemeral: true,
 					});
 					return;
-				}
-				if (currentOp && currentOp.type === subcommand) {
+				} else if (currentOp) {
 					log.info(`Note: Resuming ${subcommand} operation.`);
 				}
 			}

@@ -58,7 +58,6 @@ describe('formatBreakoutStatus', () => {
 			startTime: baseStartTime,
 			totalMinutes: 45,
 			breakoutRooms: ['room-1'],
-			fiveMinSent: false,
 			sentReminders: [22],
 			autoRecall: true,
 			mainRoomId: 'main-1',

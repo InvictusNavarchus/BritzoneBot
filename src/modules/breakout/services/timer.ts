@@ -169,10 +169,7 @@ export async function monitorBreakoutTimer(
 
 	// 2. Schedule intermediate reminders from lookup/calculated schedule
 	const schedule = getTimerSchedule(totalMinutes);
-	const sentReminders = new Set<number>(timerData.sentReminders || []);
-	if (timerData.fiveMinSent) {
-		sentReminders.add(5);
-	}
+	const sentReminders = new Set<number>(timerData.sentReminders ?? []);
 
 	for (const remainingMinutes of schedule) {
 		const reminderTime = endTime - remainingMinutes * 60 * 1000;

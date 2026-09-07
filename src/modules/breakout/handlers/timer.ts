@@ -109,14 +109,12 @@ export async function handleTimerCommand(
 
 			const autoRecall = autoRecallOption && !!mainRoom;
 			const schedule = getTimerSchedule(minutes);
-			const fiveMinWarningTime = minutes - 5;
 			const timerData: TimerData = {
 				timerId: `${guildId}_${Date.now()}`,
 				totalMinutes: minutes,
 				startTime: Date.now(),
 				guildId,
 				breakoutRooms: breakoutRooms.map((room) => room.id),
-				fiveMinSent: fiveMinWarningTime <= 0,
 				sentReminders: [],
 				autoRecall,
 				gracePeriodSeconds,

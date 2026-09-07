@@ -53,7 +53,7 @@ describe('timer service (cancelBreakoutTimer)', () => {
 			startTime: Date.now(),
 			guildId,
 			breakoutRooms: ['r1', 'r2'],
-			fiveMinSent: false,
+			sentReminders: [],
 		};
 
 		await setTimerData(guildId, timerData);

@@ -159,7 +159,6 @@ describe('timerPresets', () => {
 				startTime: baseStartTime,
 				totalMinutes: 45,
 				breakoutRooms: ['room-1', 'room-2'],
-				fiveMinSent: false,
 				sentReminders: [22],
 				autoRecall: true,
 				mainRoomId: 'main-room-1',
@@ -191,7 +190,6 @@ describe('timerPresets', () => {
 				startTime: baseStartTime,
 				totalMinutes: 30,
 				breakoutRooms: ['room-1'],
-				fiveMinSent: true,
 				sentReminders: [15, 5],
 				autoRecall: true,
 				mainRoomId: 'main-room-1',
@@ -211,7 +209,7 @@ describe('timerPresets', () => {
 				startTime: baseStartTime,
 				totalMinutes: 30,
 				breakoutRooms: ['room-1'],
-				fiveMinSent: true,
+				sentReminders: [],
 				autoRecall: true,
 				gracePeriodSeconds: 60,
 			};
@@ -228,7 +226,7 @@ describe('timerPresets', () => {
 				startTime: baseStartTime,
 				totalMinutes: 0.05,
 				breakoutRooms: [],
-				fiveMinSent: false,
+				sentReminders: [],
 				autoRecall: false,
 			};
 
@@ -245,7 +243,6 @@ describe('timerPresets', () => {
 				startTime: baseStartTime,
 				totalMinutes: 30,
 				breakoutRooms: ['room-1'],
-				fiveMinSent: true,
 				sentReminders: [15, 5],
 				autoRecall: false,
 			};
@@ -275,7 +272,6 @@ describe('timerPresets', () => {
 				startTime: baseStartTime,
 				totalMinutes: 45,
 				breakoutRooms: ['room-1'],
-				fiveMinSent: false,
 				sentReminders: [22], // only 22m recorded as sent
 				autoRecall: true,
 			};

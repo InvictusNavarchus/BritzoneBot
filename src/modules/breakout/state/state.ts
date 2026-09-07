@@ -65,11 +65,33 @@ export interface TimerData {
 	startTime: number;
 	guildId: string;
 	breakoutRooms: string[];
-	fiveMinSent: boolean;
-	sentReminders?: number[];
+	sentReminders: number[];
 	autoRecall?: boolean;
 	gracePeriodSeconds?: number;
 	mainRoomId?: string;
+	/**
+	 * @deprecated Superseded by {@link TimerData.sentReminders}, which tracks
+	 * every threshold rather than just the 5-minute one. Retained so state files
+	 * written before the migration still parse; {@link loadState} folds it into
+	 * `sentReminders` and drops it, so nothing downstream reads it.
+	 */
+	fiveMinSent?: boolean;
+}
+
+/**
+ * Folds the legacy `fiveMinSent` flag into `sentReminders`.
+ *
+ * The two fields tracked the same fact and were reconciled ad hoc at every read
+ * site. Migrating once, where persisted state enters the process, leaves a
+ * single source of truth for the rest of the codebase.
+ */
+function migrateTimerData(timerData: TimerData): void {
+	const sent = new Set<number>(timerData.sentReminders ?? []);
+	if (timerData.fiveMinSent) {
+		sent.add(5);
+	}
+	timerData.sentReminders = Array.from(sent);
+	delete timerData.fiveMinSent;
 }
 
 /**
@@ -140,6 +162,11 @@ async function loadState(): Promise<void> {
 	try {
 		const data = await fs.readFile(getStateFile(), 'utf8');
 		inMemoryState = JSON.parse(data);
+		for (const guildState of Object.values(inMemoryState)) {
+			if (guildState.timerData) {
+				migrateTimerData(guildState.timerData);
+			}
+		}
 		logger.debug('📤 Loaded breakout state data');
 	} catch (error: unknown) {
 		const err = error as { code?: string };
@@ -428,13 +455,9 @@ export async function markReminderSent(
 		return false;
 	}
 
-	const updatedSent = Array.from(
-		new Set([...(currentTimer.sentReminders || []), remainingMinutes]),
+	currentTimer.sentReminders = Array.from(
+		new Set([...(currentTimer.sentReminders ?? []), remainingMinutes]),
 	);
-	currentTimer.sentReminders = updatedSent;
-	if (remainingMinutes === 5) {
-		currentTimer.fiveMinSent = true;
-	}
 	await saveState();
 	return true;
 }

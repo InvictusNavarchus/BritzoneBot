@@ -161,7 +161,6 @@ export function formatTimerStatus(
 		mainRoomId,
 		gracePeriodSeconds = 60,
 		sentReminders = [],
-		fiveMinSent,
 	} = timerData;
 
 	const durationMs = totalMinutes * 60 * 1000;
@@ -191,9 +190,6 @@ export function formatTimerStatus(
 	// Reminders status
 	const schedule = getTimerSchedule(totalMinutes);
 	const sentSet = new Set<number>(sentReminders);
-	if (fiveMinSent) {
-		sentSet.add(5);
-	}
 
 	let reminderStatus = 'None scheduled';
 	if (schedule.length > 0) {

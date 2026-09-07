@@ -154,7 +154,7 @@ describe('StateManager (state.ts)', () => {
 				startTime: Date.now(),
 				guildId,
 				breakoutRooms: ['r1', 'r2'],
-				fiveMinSent: false,
+				sentReminders: [],
 				autoRecall: true,
 				gracePeriodSeconds: 60,
 				mainRoomId: 'main-1',
@@ -175,6 +175,79 @@ describe('StateManager (state.ts)', () => {
 		});
 	});
 
+	describe('legacy timer state migration', () => {
+		it('folds a legacy fiveMinSent flag into sentReminders on load', async () => {
+			await fs.writeFile(
+				process.env.STATE_FILE as string,
+				JSON.stringify({
+					'guild-legacy': {
+						timerData: {
+							timerId: 't-legacy',
+							totalMinutes: 30,
+							startTime: 1720000000000,
+							guildId: 'guild-legacy',
+							breakoutRooms: ['r1'],
+							sentReminders: [15],
+							fiveMinSent: true,
+						},
+					},
+				}),
+			);
+			resetStateForTest();
+
+			const timerData = await getTimerData('guild-legacy');
+
+			expect(timerData?.sentReminders).toEqual([15, 5]);
+			expect(timerData).not.toHaveProperty('fiveMinSent');
+		});
+
+		it('leaves sentReminders untouched when the legacy flag was never set', async () => {
+			await fs.writeFile(
+				process.env.STATE_FILE as string,
+				JSON.stringify({
+					'guild-legacy': {
+						timerData: {
+							totalMinutes: 45,
+							startTime: 1720000000000,
+							guildId: 'guild-legacy',
+							breakoutRooms: ['r1'],
+							sentReminders: [22],
+							fiveMinSent: false,
+						},
+					},
+				}),
+			);
+			resetStateForTest();
+
+			const timerData = await getTimerData('guild-legacy');
+
+			expect(timerData?.sentReminders).toEqual([22]);
+			expect(timerData).not.toHaveProperty('fiveMinSent');
+		});
+
+		it('defaults sentReminders when a legacy record omitted it entirely', async () => {
+			await fs.writeFile(
+				process.env.STATE_FILE as string,
+				JSON.stringify({
+					'guild-legacy': {
+						timerData: {
+							totalMinutes: 30,
+							startTime: 1720000000000,
+							guildId: 'guild-legacy',
+							breakoutRooms: ['r1'],
+							fiveMinSent: true,
+						},
+					},
+				}),
+			);
+			resetStateForTest();
+
+			const timerData = await getTimerData('guild-legacy');
+
+			expect(timerData?.sentReminders).toEqual([5]);
+		});
+	});
+
 	describe('State retrieval and flushing', () => {
 		it('getAllGuildStates returns all in-memory guild states', async () => {
 			await setTimerData('guild-1', {
@@ -182,7 +255,7 @@ describe('StateManager (state.ts)', () => {
 				startTime: Date.now(),
 				guildId: 'guild-1',
 				breakoutRooms: ['r1'],
-				fiveMinSent: false,
+				sentReminders: [],
 			});
 			await setMainRoomId('guild-2', 'main-2');
 
@@ -197,7 +270,7 @@ describe('StateManager (state.ts)', () => {
 				startTime: Date.now(),
 				guildId: 'guild-1',
 				breakoutRooms: ['r1'],
-				fiveMinSent: false,
+				sentReminders: [],
 			});
 			await expect(flushState()).resolves.toBeUndefined();
 		});

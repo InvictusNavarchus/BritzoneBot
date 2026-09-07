@@ -4,6 +4,7 @@ import {
 	type StageChannel,
 	type VoiceChannel,
 } from 'discord.js';
+import { isUnknownChannelError } from '@/lib/discord/errors.js';
 import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { logger } from '@/lib/logger.js';
 import { moveUserToRoom } from '@/modules/breakout/services/distribution.js';
@@ -60,6 +61,21 @@ export async function executeDelete(
 						fetched.push(ch as VoiceChannel);
 					}
 				} catch (err: unknown) {
+					// A room somebody deleted by hand is simply gone: nothing left to
+					// delete, so skip it. Reporting that as a permission problem
+					// wedged the operation permanently — no admin could grant a
+					// permission that would bring the channel back, so the delete
+					// never completed and (before the lock exemptions) blocked every
+					// other subcommand behind it. executeRecall already treats this
+					// case as a warning and continues.
+					if (isUnknownChannelError(err)) {
+						log.warn(
+							{ roomId: id },
+							'⏭️ Breakout room no longer exists on Discord; skipping',
+						);
+						continue;
+					}
+
 					log.warn(
 						{ roomId: id, err },
 						'❌ Bot lacks View Channel / Manage Channels access to breakout room',

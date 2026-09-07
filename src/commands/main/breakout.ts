@@ -8,11 +8,16 @@ import { preflightBreakout } from '@/lib/discord/permission.js';
 import { replyOrEdit } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import {
+	MIN_CUSTOM_TIMER_MINUTES,
+	TIMER_PRESET_CHOICES,
+} from '@/modules/breakout/constants/timerPresets.js';
+import {
 	handleBroadcastCommand,
 	handleCreateCommand,
 	handleDeleteCommand,
 	handleDistributeCommand,
 	handleRecallCommand,
+	handleResetCommand,
 	handleSendMessageCommand,
 	handleStatusCommand,
 	handleTimerCancelCommand,
@@ -20,10 +25,32 @@ import {
 } from '@/modules/breakout/handlers/index.js';
 import {
 	type BreakoutSubcommand,
+	clearCurrentOperation,
 	getCurrentOperation,
 	hasOperationInProgress,
+	isOperationStale,
+	OPERATION_STALE_AFTER_MS,
 } from '@/modules/breakout/state/state.js';
 import type { Command } from '@/types/index.js';
+
+/**
+ * Subcommands that an interrupted operation must never block.
+ *
+ * The operation lock exists to stop two conflicting mutations of the same rooms
+ * and members. These subcommands mutate neither: `status` reads, `timer-cancel`
+ * only tears work down, and the two messaging subcommands write to a text
+ * channel. Blocking them turned a single wedged operation into a total lockout —
+ * a stuck `create` also refused `timer-cancel` and `delete`, leaving no way out
+ * short of editing data/breakoutState.json by hand.
+ */
+const LOCK_EXEMPT_SUBCOMMANDS: ReadonlySet<BreakoutSubcommand> = new Set([
+	'status',
+	'timer-cancel',
+	'broadcast',
+	'send-message',
+	// The escape hatch itself, which the lock must never gate.
+	'reset',
+]);
 
 const subcommandHandlers: Record<
 	BreakoutSubcommand,
@@ -38,6 +65,7 @@ const subcommandHandlers: Record<
 	broadcast: handleBroadcastCommand,
 	'send-message': handleSendMessageCommand,
 	status: handleStatusCommand,
+	reset: handleResetCommand,
 };
 
 const command: Command = {
@@ -125,22 +153,15 @@ const command: Command = {
 						.setName('minutes')
 						.setDescription('FGD timer duration preset')
 						.setRequired(false)
-						.addChoices(
-							{ name: '3 seconds (Testing)', value: '0.05' },
-							{ name: '20 minutes (Reminders at 10m, 5m)', value: '20' },
-							{ name: '30 minutes (Reminders at 15m, 5m)', value: '30' },
-							{ name: '45 minutes (Reminders at 22m, 10m, 3m)', value: '45' },
-							{ name: '60 minutes (Reminders at 30m, 15m, 5m)', value: '60' },
-							{ name: '90 minutes (Reminders at 45m, 20m, 5m)', value: '90' },
-						),
+						.addChoices(...TIMER_PRESET_CHOICES),
 				)
 				.addIntegerOption((option) =>
 					option
 						.setName('custom_minutes')
 						.setDescription(
-							'Custom FGD timer duration in minutes (minimum 30 minutes)',
+							`Custom FGD timer duration in minutes (minimum ${MIN_CUSTOM_TIMER_MINUTES} minutes)`,
 						)
-						.setMinValue(30)
+						.setMinValue(MIN_CUSTOM_TIMER_MINUTES)
 						.setRequired(false),
 				)
 				.addBooleanOption((option) =>
@@ -173,6 +194,14 @@ const command: Command = {
 			subcommand
 				.setName('status')
 				.setDescription('Display current breakout rooms and timer status'),
+		)
+		// Reset subcommand
+		.addSubcommand((subcommand) =>
+			subcommand
+				.setName('reset')
+				.setDescription(
+					'Clear a stuck breakout operation (rooms and timers are left untouched)',
+				),
 		)
 		// Broadcast subcommand
 		.addSubcommand((subcommand) =>
@@ -246,24 +275,34 @@ const command: Command = {
 		const subcommand =
 			interaction.options.getSubcommand() as BreakoutSubcommand;
 
-		// Check for interrupted operations (exempt status command)
-		if (subcommand !== 'status') {
+		// Check for interrupted operations (read-only and teardown subcommands are
+		// exempt, so a wedged operation never removes the escape routes)
+		if (!LOCK_EXEMPT_SUBCOMMANDS.has(subcommand)) {
 			const inProgress = await hasOperationInProgress(interaction.guildId);
 			if (inProgress) {
 				const currentOp = await getCurrentOperation(interaction.guildId);
 
-				if (currentOp && currentOp.type !== subcommand) {
+				// An operation that has recorded nothing for a long time is not in
+				// progress, it is abandoned — most likely the process died mid-run.
+				// Expiring it here means the lock heals itself instead of requiring
+				// intervention.
+				if (currentOp && isOperationStale(currentOp)) {
+					log.warn(
+						{ currentType: currentOp.type, requestedType: subcommand },
+						'🧹 Expiring stale operation before running requested subcommand',
+					);
+					await clearCurrentOperation(interaction.guildId);
+				} else if (currentOp && currentOp.type !== subcommand) {
 					log.warn(
 						{ currentType: currentOp.type, requestedType: subcommand },
 						'⚠️ Found interrupted operation, but user requested different type',
 					);
 					await replyOrEdit(interaction, {
-						content: `There is an interrupted '${currentOp.type}' operation in progress. Please finish it or clear it before starting a '${subcommand}' operation.`,
+						content: `There is an interrupted '${currentOp.type}' operation in progress. Re-run \`/breakout ${currentOp.type}\` to resume it, run \`/breakout reset\` to clear it, or wait ${OPERATION_STALE_AFTER_MS / 60_000} minutes without progress for it to expire on its own.`,
 						ephemeral: true,
 					});
 					return;
-				}
-				if (currentOp && currentOp.type === subcommand) {
+				} else if (currentOp) {
 					log.info(`Note: Resuming ${subcommand} operation.`);
 				}
 			}

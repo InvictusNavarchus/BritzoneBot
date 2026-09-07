@@ -7,6 +7,7 @@ import {
 	type VoiceChannel,
 } from 'discord.js';
 import { logger } from '@/lib/logger.js';
+import { findRoomsByNamePattern } from '@/modules/breakout/utils/rooms.js';
 
 export type BreakoutSubcommand =
 	| 'create'
@@ -17,7 +18,8 @@ export type BreakoutSubcommand =
 	| 'timer-cancel'
 	| 'broadcast'
 	| 'send-message'
-	| 'status';
+	| 'status'
+	| 'reset';
 
 /**
  * Single operation step data
@@ -37,6 +39,11 @@ interface OperationProgress {
 	steps: Record<string, OperationStep>;
 	startTime: number;
 	completedTime?: number;
+	/**
+	 * Number of steps the operation recorded, kept when the step map itself is
+	 * dropped on archival so history still says how much work was done.
+	 */
+	stepCount?: number;
 }
 
 /**
@@ -54,6 +61,12 @@ export interface CurrentOperation {
 interface PersistedSession {
 	mainRoomId?: string;
 	roomIds?: string[];
+	/**
+	 * Category the session's breakout rooms were created in, used to scope the
+	 * name-pattern fallback so rooms elsewhere in the guild are never adopted.
+	 * Explicitly null for root-level rooms without a category.
+	 */
+	categoryId?: string | null;
 }
 
 /**
@@ -65,11 +78,33 @@ export interface TimerData {
 	startTime: number;
 	guildId: string;
 	breakoutRooms: string[];
-	fiveMinSent: boolean;
-	sentReminders?: number[];
+	sentReminders: number[];
 	autoRecall?: boolean;
 	gracePeriodSeconds?: number;
 	mainRoomId?: string;
+	/**
+	 * @deprecated Superseded by {@link TimerData.sentReminders}, which tracks
+	 * every threshold rather than just the 5-minute one. Retained so state files
+	 * written before the migration still parse; {@link loadState} folds it into
+	 * `sentReminders` and drops it, so nothing downstream reads it.
+	 */
+	fiveMinSent?: boolean;
+}
+
+/**
+ * Folds the legacy `fiveMinSent` flag into `sentReminders`.
+ *
+ * The two fields tracked the same fact and were reconciled ad hoc at every read
+ * site. Migrating once, where persisted state enters the process, leaves a
+ * single source of truth for the rest of the codebase.
+ */
+function migrateTimerData(timerData: TimerData): void {
+	const sent = new Set<number>(timerData.sentReminders ?? []);
+	if (timerData.fiveMinSent) {
+		sent.add(5);
+	}
+	timerData.sentReminders = Array.from(sent);
+	delete timerData.fiveMinSent;
 }
 
 /**
@@ -95,32 +130,58 @@ function getStateFile(): string {
 const MAX_HISTORY = 20;
 let inMemoryState: Record<string, GuildState> = {};
 let initialized: boolean = false;
+let initPromise: Promise<void> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
+let pendingSaveTimer: NodeJS.Timeout | null = null;
 
 /**
  * Resets the in-memory state and initialized flag for testing
  */
 export function resetStateForTest(): void {
+	if (pendingSaveTimer) {
+		clearTimeout(pendingSaveTimer);
+		pendingSaveTimer = null;
+	}
 	inMemoryState = {};
 	initialized = false;
+	initPromise = null;
 	saveQueue = Promise.resolve();
 }
 
 /**
  * Initialize the state manager, ensuring the data directory exists
- * and loading any existing state
+ * and loading any existing state.
+ *
+ * Nearly every exported function awaits this, so concurrent callers are the
+ * normal case rather than the exception. The in-flight promise is memoised
+ * because `initialized` is only set once `loadState()` has resolved: without it,
+ * two commands arriving together both ran `loadState()`, and the second
+ * `inMemoryState = JSON.parse(data)` replaced the object graph the first had
+ * already begun writing into, silently discarding its mutations.
+ *
+ * The memo is cleared on failure so a transient filesystem error can be retried
+ * by the next caller rather than poisoning the process.
  */
 export async function initializeState(): Promise<void> {
 	if (initialized) return;
 
-	try {
-		await fs.mkdir(getStatePath(), { recursive: true });
-		await loadState();
-		initialized = true;
-		logger.info('📂 StateManager initialized');
-	} catch (error) {
-		logger.error({ err: error }, '❌ Failed to initialize StateManager');
+	if (!initPromise) {
+		initPromise = (async () => {
+			try {
+				await fs.mkdir(getStatePath(), { recursive: true });
+				await loadState();
+				initialized = true;
+				logger.info('📂 StateManager initialized');
+			} catch (error) {
+				logger.error({ err: error }, '❌ Failed to initialize StateManager');
+				throw error;
+			} finally {
+				initPromise = null;
+			}
+		})();
 	}
+
+	return initPromise;
 }
 
 /**
@@ -140,6 +201,11 @@ async function loadState(): Promise<void> {
 	try {
 		const data = await fs.readFile(getStateFile(), 'utf8');
 		inMemoryState = JSON.parse(data);
+		for (const guildState of Object.values(inMemoryState)) {
+			if (guildState.timerData) {
+				migrateTimerData(guildState.timerData);
+			}
+		}
 		logger.debug('📤 Loaded breakout state data');
 	} catch (error: unknown) {
 		const err = error as { code?: string };
@@ -153,7 +219,21 @@ async function loadState(): Promise<void> {
 	}
 }
 
+/**
+ * Window over which rapid progress updates are coalesced into one disk write.
+ *
+ * Short enough that a crash loses at most a fraction of a second of
+ * checkpoints, and every checkpoint it could lose guards work that is safe to
+ * repeat on resume.
+ */
+const SAVE_DEBOUNCE_MS = 250;
+
 async function saveState(): Promise<void> {
+	if (pendingSaveTimer) {
+		clearTimeout(pendingSaveTimer);
+		pendingSaveTimer = null;
+	}
+
 	const nextSave = saveQueue.then(async () => {
 		try {
 			await initializeState();
@@ -171,6 +251,26 @@ async function saveState(): Promise<void> {
 		logger.error({ err }, '❌ Save queue encountered an unhandled rejection');
 	});
 	return nextSave;
+}
+
+/**
+ * Requests a save without waiting for it, coalescing bursts.
+ *
+ * Used for progress checkpoints, which arrive once per member moved: a
+ * 100-person distribution otherwise serialised and rewrote the entire state
+ * file a hundred times.
+ */
+function scheduleSave(): void {
+	if (pendingSaveTimer) return;
+
+	pendingSaveTimer = setTimeout(() => {
+		pendingSaveTimer = null;
+		void saveState();
+	}, SAVE_DEBOUNCE_MS);
+
+	// Never hold the process open for a pending checkpoint; graceful shutdown
+	// calls flushState, which writes synchronously with respect to the caller.
+	pendingSaveTimer.unref?.();
 }
 
 /**
@@ -200,6 +300,18 @@ export async function startOperation(
 	await saveState();
 }
 
+export interface UpdateProgressOptions {
+	/**
+	 * Write to disk before resolving instead of coalescing with nearby updates.
+	 *
+	 * Set this for checkpoints guarding work that is *not* safe to repeat — room
+	 * creation, for instance, where losing the checkpoint means resume creates a
+	 * duplicate channel. Moves and deletes are idempotent enough to ride the
+	 * debounce.
+	 */
+	immediate?: boolean;
+}
+
 /**
  * Update progress for a step
  */
@@ -207,6 +319,7 @@ export async function updateProgress(
 	guildId: string,
 	step: string,
 	data: Record<string, unknown> = {},
+	options: UpdateProgressOptions = {},
 ): Promise<boolean> {
 	await initializeState();
 	const guildState = inMemoryState[guildId];
@@ -225,7 +338,12 @@ export async function updateProgress(
 		...data,
 	};
 	logger.debug({ guildId, step }, '🔄 Updated operation progress');
-	await saveState();
+
+	if (options.immediate) {
+		await saveState();
+	} else {
+		scheduleSave();
+	}
 	return true;
 }
 
@@ -238,18 +356,82 @@ export async function completeOperation(guildId: string): Promise<void> {
 
 	if (!guildState?.currentOperation) return;
 
-	guildState.currentOperation.progress.completed = true;
-	guildState.currentOperation.progress.completedTime = Date.now();
+	const operation = guildState.currentOperation;
+	operation.progress.completed = true;
+	operation.progress.completedTime = Date.now();
 
 	if (!guildState.history) {
 		guildState.history = [];
 	}
-	guildState.history.push(guildState.currentOperation);
+
+	// Archive without the step map. Steps are resume checkpoints — one entry per
+	// room created, per member moved — so a single distribution can record
+	// hundreds. They are meaningless once the operation is complete, but
+	// MAX_HISTORY kept twenty such maps alive, growing the state file (rewritten
+	// in full on every save) without bound.
+	const stepCount = Object.keys(operation.progress.steps).length;
+	guildState.history.push({
+		...operation,
+		progress: { ...operation.progress, steps: {}, stepCount },
+	});
 	guildState.history = guildState.history.slice(-MAX_HISTORY);
 	delete guildState.currentOperation;
 
-	logger.info({ guildId }, '✅ Completed breakout operation');
+	logger.info({ guildId, stepCount }, '✅ Completed breakout operation');
 	await saveState();
+}
+
+/**
+ * How long an operation may sit without recording a step before it is treated
+ * as abandoned.
+ *
+ * Comfortably above the 120s handler timeout that bounds the longest real
+ * operation, so a slow-but-live run is never mistaken for a wedged one.
+ */
+export const OPERATION_STALE_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Returns whether an operation has gone quiet long enough to be abandoned.
+ *
+ * Measured from the most recent checkpoint rather than the start time, so a
+ * long operation that is still making progress stays live.
+ */
+export function isOperationStale(
+	operation: CurrentOperation,
+	now: number = Date.now(),
+): boolean {
+	const stepTimes = Object.values(operation.progress.steps).map(
+		(step) => step.timestamp,
+	);
+	const lastActivity = Math.max(operation.progress.startTime, ...stepTimes);
+	return now - lastActivity > OPERATION_STALE_AFTER_MS;
+}
+
+/**
+ * Discards the current operation without archiving it to history.
+ *
+ * This is the recovery path for an operation that was interrupted and will
+ * never complete; a completed operation should go through
+ * {@link completeOperation} instead.
+ *
+ * @returns The discarded operation, or undefined if there was none.
+ */
+export async function clearCurrentOperation(
+	guildId: string,
+): Promise<CurrentOperation | undefined> {
+	await initializeState();
+	const guildState = inMemoryState[guildId];
+	const cleared = guildState?.currentOperation;
+
+	if (!cleared) return undefined;
+
+	delete guildState.currentOperation;
+	logger.info(
+		{ guildId, operationType: cleared.type },
+		'🧹 Discarded interrupted breakout operation',
+	);
+	await saveState();
+	return cleared;
 }
 
 /**
@@ -297,18 +479,27 @@ export async function getCompletedSteps(
 export async function storeRoomIds(
 	guildId: string,
 	roomIds: string[],
+	categoryId?: string | null,
 ): Promise<void> {
 	await initializeState();
 	const guildState = getGuildState(guildId);
 	guildState.session = {
 		...guildState.session,
 		roomIds,
+		...(categoryId !== undefined ? { categoryId } : {}),
 	};
 	logger.debug(
-		{ guildId, count: roomIds.length },
+		{ guildId, count: roomIds.length, categoryId },
 		'📝 Stored breakout room IDs',
 	);
 	await saveState();
+}
+
+/**
+ * Gets the category the guild's breakout rooms were created in, if recorded.
+ */
+export function getSessionCategoryId(guild: Guild): string | null | undefined {
+	return inMemoryState[guild.id]?.session?.categoryId;
 }
 
 /**
@@ -342,15 +533,7 @@ export function getRooms(guild: Guild): VoiceChannel[] {
 	const roomIds = guildState?.session?.roomIds || [];
 
 	if (roomIds.length === 0) {
-		return Array.from(
-			guild.channels.cache
-				.filter(
-					(channel): channel is VoiceChannel =>
-						channel.type === ChannelType.GuildVoice &&
-						channel.name.startsWith('breakout-room-'),
-				)
-				.values(),
-		);
+		return findRoomsByNamePattern(guild, guildState?.session?.categoryId);
 	}
 
 	return roomIds
@@ -428,13 +611,9 @@ export async function markReminderSent(
 		return false;
 	}
 
-	const updatedSent = Array.from(
-		new Set([...(currentTimer.sentReminders || []), remainingMinutes]),
+	currentTimer.sentReminders = Array.from(
+		new Set([...(currentTimer.sentReminders ?? []), remainingMinutes]),
 	);
-	currentTimer.sentReminders = updatedSent;
-	if (remainingMinutes === 5) {
-		currentTimer.fiveMinSent = true;
-	}
 	await saveState();
 	return true;
 }
@@ -471,5 +650,10 @@ export async function getAllGuildStates(): Promise<Record<string, GuildState>> {
  * Ensures all pending state save operations are flushed to disk
  */
 export async function flushState(): Promise<void> {
+	// Force any debounced checkpoint out before draining the queue, otherwise a
+	// shutdown could drop the last few progress updates.
+	if (pendingSaveTimer) {
+		await saveState();
+	}
 	await saveQueue;
 }

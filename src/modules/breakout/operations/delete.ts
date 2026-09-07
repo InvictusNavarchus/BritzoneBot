@@ -1,11 +1,11 @@
 import {
 	ChannelType,
 	type CommandInteraction,
-	GuildMember,
 	type StageChannel,
 	type VoiceChannel,
 } from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { isUnknownChannelError } from '@/lib/discord/errors.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { logger } from '@/lib/logger.js';
 import { moveUserToRoom } from '@/modules/breakout/services/distribution.js';
 import { deleteRoom } from '@/modules/breakout/services/room.js';
@@ -17,9 +17,11 @@ import {
 	getCurrentOperation,
 	getMainRoom,
 	getRooms,
+	getSessionCategoryId,
 	startOperation,
 	updateProgress,
 } from '@/modules/breakout/state/state.js';
+import { findRoomsByNamePattern } from '@/modules/breakout/utils/rooms.js';
 import type { OperationResult } from '@/types/index.js';
 
 /**
@@ -61,6 +63,21 @@ export async function executeDelete(
 						fetched.push(ch as VoiceChannel);
 					}
 				} catch (err: unknown) {
+					// A room somebody deleted by hand is simply gone: nothing left to
+					// delete, so skip it. Reporting that as a permission problem
+					// wedged the operation permanently — no admin could grant a
+					// permission that would bring the channel back, so the delete
+					// never completed and (before the lock exemptions) blocked every
+					// other subcommand behind it. executeRecall already treats this
+					// case as a warning and continues.
+					if (isUnknownChannelError(err)) {
+						log.warn(
+							{ roomId: id },
+							'⏭️ Breakout room no longer exists on Discord; skipping',
+						);
+						continue;
+					}
+
 					log.warn(
 						{ roomId: id, err },
 						'❌ Bot lacks View Channel / Manage Channels access to breakout room',
@@ -79,20 +96,32 @@ export async function executeDelete(
 		// Get breakout rooms
 		breakoutRooms = getRooms(interaction.guild);
 
-		// If no stored rooms, identify them by name pattern as fallback
+		// If no stored rooms, identify them by name pattern as fallback, scoped to
+		// the session's category so unrelated rooms are never picked up.
 		if (!breakoutRooms || breakoutRooms.length === 0) {
-			breakoutRooms = Array.from(
-				interaction.guild.channels.cache
-					.filter(
-						(channel) =>
-							channel.type === ChannelType.GuildVoice &&
-							channel.name.startsWith('breakout-room-'),
-					)
-					.values(),
-			) as VoiceChannel[];
+			breakoutRooms = findRoomsByNamePattern(
+				interaction.guild,
+				getSessionCategoryId(interaction.guild),
+			);
 		}
 
 		if (breakoutRooms.length === 0) {
+			if (isResuming) {
+				// All tracked rooms were already deleted by hand or in a prior run.
+				// Complete cleanup so the operation does not remain permanently wedged.
+				await cancelBreakoutTimer(guildId);
+				await updateProgress(guildId, 'clear_session');
+				await clearSession(guildId);
+				await completeOperation(guildId);
+
+				log.info('🎉 Resumed delete found all breakout rooms already deleted.');
+				return {
+					success: true,
+					message:
+						'All breakout rooms were already deleted. Cleaned up session state!',
+				};
+			}
+
 			log.warn('⚠️ No breakout rooms found to delete.');
 			return {
 				success: false,
@@ -101,23 +130,16 @@ export async function executeDelete(
 		}
 	}
 
-	if (interaction.member instanceof GuildMember) {
-		const check = preflightBreakout({
-			member: interaction.member,
-			channels: breakoutRooms,
-			requireManageChannels: true,
-		});
-
-		if (!check.ok) {
-			log.warn(
-				{ reason: check.reason },
-				'❌ Preflight permission check failed',
-			);
-			return {
-				success: false,
-				message: check.reason ?? 'Permission check failed.',
-			};
-		}
+	const check = preflightBreakoutFor(interaction, {
+		channels: breakoutRooms,
+		requireManageChannels: true,
+	});
+	if (!check.ok) {
+		log.warn({ reason: check.reason }, '❌ Preflight permission check failed');
+		return {
+			success: false,
+			message: check.reason ?? 'Permission check failed.',
+		};
 	}
 
 	if (!isResuming) {

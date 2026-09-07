@@ -9,12 +9,15 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Client, Collection, GatewayIntentBits, RESTEvents } from 'discord.js';
+import { disableActivePrompts } from '@/lib/discord/components.js';
 import { releaseDistributedLock } from '@/lib/distributedLock.js';
 import { logger } from '@/lib/logger.js';
+import { listModuleFiles, moduleExtensionOf } from '@/lib/moduleFiles.js';
 import { flushState, initializeState } from '@/modules/breakout/state/state.js';
 import type { BritzoneClient, Command, Event } from '@/types/index.js';
 
 const __dirname = import.meta.dirname;
+const moduleExtension = moduleExtensionOf(import.meta.url);
 
 // ============================================================================
 // LOGGING SETUP
@@ -85,9 +88,7 @@ const commandFolders = fs.readdirSync(foldersPath);
 
 for (const folder of commandFolders) {
 	const commandsPath = path.join(foldersPath, folder);
-	const commandFiles = fs
-		.readdirSync(commandsPath)
-		.filter((file) => file.endsWith('.js'));
+	const commandFiles = listModuleFiles(commandsPath, moduleExtension);
 
 	for (const file of commandFiles) {
 		const filePath = path.join(commandsPath, file);
@@ -120,9 +121,7 @@ for (const folder of commandFolders) {
 logger.info('🎉 Loading events...');
 
 const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs
-	.readdirSync(eventsPath)
-	.filter((file) => file.endsWith('.js'));
+const eventFiles = listModuleFiles(eventsPath, moduleExtension);
 
 for (const file of eventFiles) {
 	const filePath = path.join(eventsPath, file);
@@ -186,6 +185,15 @@ const handleShutdown = async (signal: string) => {
 	forceExitTimeout.unref();
 
 	try {
+		// Neutralise open Confirm/Cancel prompts first: their collectors die with
+		// this process, and a click afterwards would only produce Discord's bare
+		// "This interaction failed". Bounded by a short timeout so stalled Discord
+		// edits cannot prevent flushing state or releasing locks before exit.
+		await Promise.race([
+			disableActivePrompts(),
+			new Promise((resolve) => setTimeout(resolve, 1500)),
+		]);
+
 		await releaseDistributedLock();
 		client.destroy();
 		logger.info('🔌 Discord client destroyed.');

@@ -1,9 +1,8 @@
-import {
-	type ChatInputCommandInteraction,
-	GuildMember,
-	type VoiceBasedChannel,
+import type {
+	ChatInputCommandInteraction,
+	VoiceBasedChannel,
 } from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import { executeRecall } from '@/modules/breakout/operations/recall.js';
@@ -41,17 +40,13 @@ export async function handleRecallCommand(
 
 			const targetMainChannel = mainChannel;
 
-			if (interaction.member instanceof GuildMember) {
-				const check = preflightBreakout({
-					member: interaction.member,
-					voiceChannel: targetMainChannel,
-					requireUserMove: true,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const check = preflightBreakoutFor(interaction, {
+				voiceChannel: targetMainChannel,
+				requireUserMove: true,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const log = logger.child({

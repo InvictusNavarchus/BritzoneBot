@@ -7,6 +7,10 @@ import type {
 	VoiceChannel,
 } from 'discord.js';
 import type { Logger } from 'pino';
+import {
+	getDiscordErrorCode,
+	isPermanentDiscordFailure,
+} from '@/lib/discord/errors.js';
 import { logger } from '@/lib/logger.js';
 import {
 	formatReminderMessage,
@@ -69,20 +73,31 @@ export async function monitorBreakoutTimer(
 	}
 
 	const timeouts: NodeJS.Timeout[] = [];
-	const activeMessages: Message[] = [];
+
+	/**
+	 * Live countdown messages only — the "moving members back <relative time>"
+	 * notices whose relative timestamp goes stale the moment the timer is
+	 * cancelled or replaced.
+	 *
+	 * Intermediate reminders ("15 minutes remaining") are deliberately absent:
+	 * they are an accurate record of what participants were told and stay in the
+	 * room. Tracking them here meant cancelling or replacing a timer wiped the
+	 * whole reminder history out of every breakout room.
+	 */
+	const countdownMessages: Message[] = [];
 	const cleanup = async (cleanMessages = false) => {
 		for (const t of timeouts) {
 			clearTimeout(t);
 		}
 		if (cleanMessages) {
-			for (const msg of activeMessages) {
+			for (const msg of countdownMessages) {
 				try {
 					await msg.delete();
-					log.info({ messageId: msg.id }, '🗑️ Deleted previous timer message');
+					log.info({ messageId: msg.id }, '🗑️ Deleted stale countdown message');
 				} catch (err) {
 					log.debug(
 						{ err, messageId: msg.id },
-						'⚠️ Could not delete previous timer message',
+						'⚠️ Could not delete stale countdown message',
 					);
 				}
 			}
@@ -122,7 +137,7 @@ export async function monitorBreakoutTimer(
 		);
 		await executeAutoRecall(timerData.mainRoomId);
 		await clearTimerData(guildId);
-		cleanup();
+		await cleanup();
 		return;
 	}
 
@@ -142,7 +157,7 @@ export async function monitorBreakoutTimer(
 			client,
 		);
 		for (const msg of sentMessages.values()) {
-			activeMessages.push(msg);
+			countdownMessages.push(msg);
 		}
 		const tGrace = setTimeout(async () => {
 			try {
@@ -155,7 +170,7 @@ export async function monitorBreakoutTimer(
 					"⏰ **Time's up!** This breakout session has ended.\n✅ Moving all members back to the main room now.",
 				);
 				await clearTimerData(guildId);
-				cleanup();
+				await cleanup();
 			} catch (error) {
 				log.error(
 					{ err: error, timerId },
@@ -169,10 +184,7 @@ export async function monitorBreakoutTimer(
 
 	// 2. Schedule intermediate reminders from lookup/calculated schedule
 	const schedule = getTimerSchedule(totalMinutes);
-	const sentReminders = new Set<number>(timerData.sentReminders || []);
-	if (timerData.fiveMinSent) {
-		sentReminders.add(5);
-	}
+	const sentReminders = new Set<number>(timerData.sentReminders ?? []);
 
 	for (const remainingMinutes of schedule) {
 		const reminderTime = endTime - remainingMinutes * 60 * 1000;
@@ -193,16 +205,13 @@ export async function monitorBreakoutTimer(
 						{ roomCount: breakoutRooms.length, remainingMinutes },
 						`⏱️ Sending ${remainingMinutes}-minute reminder`,
 					);
-					const sentMap = await sendReminderWithRetry(
+					await sendReminderWithRetry(
 						log,
 						guildId,
 						breakoutRooms,
 						message,
 						client,
 					);
-					for (const msg of sentMap.values()) {
-						activeMessages.push(msg);
-					}
 					if (timerId) {
 						await markReminderSent(guildId, timerId, remainingMinutes);
 					}
@@ -220,16 +229,7 @@ export async function monitorBreakoutTimer(
 				{ remainingMinutes },
 				`⏱️ Missed ${remainingMinutes}-minute warning while offline. Sending catch-up notice.`,
 			);
-			const sentMap = await sendReminderWithRetry(
-				log,
-				guildId,
-				breakoutRooms,
-				message,
-				client,
-			);
-			for (const msg of sentMap.values()) {
-				activeMessages.push(msg);
-			}
+			await sendReminderWithRetry(log, guildId, breakoutRooms, message, client);
 			if (timerId) {
 				await markReminderSent(guildId, timerId, remainingMinutes);
 			}
@@ -256,7 +256,7 @@ export async function monitorBreakoutTimer(
 					client,
 				);
 				for (const msg of sentMessages.values()) {
-					activeMessages.push(msg);
+					countdownMessages.push(msg);
 				}
 
 				const tGrace = setTimeout(async () => {
@@ -272,7 +272,7 @@ export async function monitorBreakoutTimer(
 							"⏰ **Time's up!** This breakout session has ended.\n✅ Moving all members back to the main room now.",
 						);
 						await clearTimerData(guildId);
-						cleanup();
+						await cleanup();
 					} catch (error) {
 						log.error(
 							{ err: error, timerId },
@@ -291,7 +291,7 @@ export async function monitorBreakoutTimer(
 				);
 				await executeAutoRecall(state.mainRoomId);
 				await clearTimerData(guildId);
-				cleanup();
+				await cleanup();
 			}
 		} catch (error) {
 			log.error(
@@ -413,6 +413,23 @@ async function sendReminderWithRetry(
 				log.info({ channel: textChannel.name }, `✅ Reminder sent`);
 			} catch (error) {
 				attempts++;
+
+				// A deleted channel or a missing permission fails identically on
+				// every attempt. Retrying it burns the backoff budget inside a
+				// setTimeout callback and stalls every room queued behind this one —
+				// ten misconfigured rooms would block for minutes.
+				if (isPermanentDiscordFailure(error)) {
+					log.error(
+						{
+							err: error,
+							code: getDiscordErrorCode(error),
+							channel: textChannel.name,
+						},
+						`❌ Reminder cannot be delivered to this room; not retrying`,
+					);
+					break;
+				}
+
 				log.error(
 					{
 						err: error,
@@ -434,8 +451,8 @@ async function sendReminderWithRetry(
 
 		if (!success) {
 			log.error(
-				{ channel: textChannel.name, maxRetries },
-				`❌ Failed to send reminder after max attempts`,
+				{ channel: textChannel.name, attempts },
+				`❌ Gave up sending reminder to room`,
 			);
 		}
 	}

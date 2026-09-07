@@ -7,8 +7,8 @@
 	"scripts": {
 		"clean": "rimraf dist",
 		"build:info": "bun scripts/generateBuildInfo.ts",
-		"build": "bun run clean && bun run build:info && tsc -p tsconfig.build.json",
-		"start": "bun dist/index.js",
+		"build": "bun run clean && bun run build:info && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+		"start": "NODE_ENV=production bun dist/index.js",
 		"deploy": "bun dist/deployCommandsLocal.js",
 		"dev": "bun run build:info && bun --watch src/index.ts",
 		"format": "biome format --write",
@@ -34,6 +34,7 @@
 		"lefthook": "^2.1.10",
 		"release-it": "^21.0.2",
 		"rimraf": "^6.1.3",
+		"tsc-alias": "^1.9.4",
 		"typescript": "^7.0.2",
 		"vitest": "^4.1.10"
 	}

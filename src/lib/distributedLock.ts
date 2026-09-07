@@ -129,10 +129,28 @@ export async function getOrCreateLockChannel(
 	}
 }
 
+/**
+ * Acquires the multi-developer instance lock.
+ *
+ * This is development tooling: it exists so two developers (or two terminals)
+ * cannot point local bots at the same Discord application at once. It is
+ * deliberately inert in production, where the lock is actively harmful — the
+ * heartbeat posts to a guild channel every {@link HEARTBEAT_INTERVAL_MS}
+ * forever, it binds to an arbitrary guild from `guildConfig.json` insertion
+ * order, and after a SIGKILL or OOM the {@link LOCK_EXPIRATION_MS} stale window
+ * makes pm2's `autorestart` crash-loop the process until the lock expires.
+ */
 export async function acquireDistributedLock(
 	client: Client,
 	settlingDelayMs: number = SETTLING_DELAY_MS,
 ): Promise<void> {
+	if (process.env.NODE_ENV === 'production') {
+		logger.debug(
+			'🔓 Instance lock is development tooling; skipping in production.',
+		);
+		return;
+	}
+
 	try {
 		if (activeHeartbeatTimer) {
 			clearInterval(activeHeartbeatTimer);

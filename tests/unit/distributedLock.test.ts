@@ -180,6 +180,32 @@ describe('Distributed Instance Lock (distributedLock.ts)', () => {
 			);
 		});
 
+		it('is inert in production and never touches Discord', async () => {
+			const originalEnv = process.env.NODE_ENV;
+			process.env.NODE_ENV = 'production';
+
+			const loadConfigSpy = vi.spyOn(guildConfig, 'loadGuildConfig');
+			const client = {
+				guilds: {
+					cache: new Collection(),
+					fetch: vi.fn(),
+				},
+			} as unknown as Client;
+
+			try {
+				await distributedLock.acquireDistributedLock(client, 0);
+			} finally {
+				if (originalEnv === undefined) {
+					delete process.env.NODE_ENV;
+				} else {
+					process.env.NODE_ENV = originalEnv;
+				}
+			}
+
+			expect(loadConfigSpy).not.toHaveBeenCalled();
+			expect(client.guilds.fetch).not.toHaveBeenCalled();
+		});
+
 		it('acquires lock when no active lock message exists', async () => {
 			vi.spyOn(guildConfig, 'loadGuildConfig').mockReturnValue({
 				'guild-1': { managerRoleId: 'role-1' },

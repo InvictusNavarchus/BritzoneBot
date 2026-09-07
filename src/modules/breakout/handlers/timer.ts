@@ -1,10 +1,13 @@
-import { type ChatInputCommandInteraction, GuildMember } from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import type { ChatInputCommandInteraction } from 'discord.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import {
+	formatDuration,
 	formatScheduleSummary,
 	getTimerSchedule,
+	isPresetDuration,
+	MIN_CUSTOM_TIMER_MINUTES,
 } from '@/modules/breakout/constants/timerPresets.js';
 import { monitorBreakoutTimer } from '@/modules/breakout/services/timer.js';
 import {
@@ -37,9 +40,9 @@ export async function handleTimerCommand(
 			let minutes: number | null = null;
 
 			if (customMinutesOption !== null) {
-				if (customMinutesOption < 30) {
+				if (customMinutesOption < MIN_CUSTOM_TIMER_MINUTES) {
 					await ctx.reply(
-						'⚠️ Custom timer duration must be at least 30 minutes.',
+						`⚠️ Custom timer duration must be at least ${MIN_CUSTOM_TIMER_MINUTES} minutes.`,
 					);
 					return;
 				}
@@ -50,13 +53,17 @@ export async function handleTimerCommand(
 
 			if (minutes === null || Number.isNaN(minutes) || minutes <= 0) {
 				await ctx.reply(
-					'⚠️ Please select a duration preset or provide a custom duration in minutes (minimum 30 minutes). Use `/breakout status` to check active session status.',
+					`⚠️ Please select a duration preset or provide a custom duration in minutes (minimum ${MIN_CUSTOM_TIMER_MINUTES} minutes). Use \`/breakout status\` to check active session status.`,
 				);
 				return;
 			}
 
-			if (minutes !== 0.05 && minutes < 30) {
-				await ctx.reply('⚠️ Timer duration must be at least 30 minutes.');
+			// Presets are advertised in the slash command, so any preset is valid
+			// regardless of length; only custom durations carry a floor.
+			if (!isPresetDuration(minutes) && minutes < MIN_CUSTOM_TIMER_MINUTES) {
+				await ctx.reply(
+					`⚠️ Timer duration must be at least ${MIN_CUSTOM_TIMER_MINUTES} minutes.`,
+				);
 				return;
 			}
 
@@ -68,18 +75,14 @@ export async function handleTimerCommand(
 			const mainRoom = getMainRoom(guild);
 			const breakoutRooms = getRooms(guild);
 
-			if (interaction.member instanceof GuildMember) {
-				const check = preflightBreakout({
-					member: interaction.member,
-					voiceChannel: mainRoom,
-					channels: breakoutRooms,
-					requireUserMove: autoRecallOption && !!mainRoom,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const check = preflightBreakoutFor(interaction, {
+				voiceChannel: mainRoom,
+				channels: breakoutRooms,
+				requireUserMove: autoRecallOption && !!mainRoom,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const log = logger.child({
@@ -102,14 +105,12 @@ export async function handleTimerCommand(
 
 			const autoRecall = autoRecallOption && !!mainRoom;
 			const schedule = getTimerSchedule(minutes);
-			const fiveMinWarningTime = minutes - 5;
 			const timerData: TimerData = {
 				timerId: `${guildId}_${Date.now()}`,
 				totalMinutes: minutes,
 				startTime: Date.now(),
 				guildId,
 				breakoutRooms: breakoutRooms.map((room) => room.id),
-				fiveMinSent: fiveMinWarningTime <= 0,
 				sentReminders: [],
 				autoRecall,
 				gracePeriodSeconds,
@@ -135,10 +136,7 @@ export async function handleTimerCommand(
 					'ℹ️ Auto-recall is disabled (no main room configured). Run `/breakout recall` manually when ready.';
 			}
 
-			const durationText =
-				minutes < 1
-					? `${Math.round(minutes * 60)} seconds`
-					: `${minutes} minutes`;
+			const durationText = formatDuration(minutes);
 
 			await ctx.reply(
 				`⏱️ **Breakout timer set for ${durationText}.**\n${summary}\n${autoRecallNote}`,

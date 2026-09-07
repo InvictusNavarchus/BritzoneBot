@@ -157,6 +157,71 @@ describe('Discord Response Utilities (response.ts)', () => {
 			vi.useRealTimers();
 		});
 
+		it('restartTimeout gives the work after a wait its own full budget', async () => {
+			vi.useFakeTimers();
+			const replyMock = vi.fn().mockResolvedValue({ id: 'msg-ok' });
+			const mockInteraction = {
+				id: 'int-1',
+				replied: false,
+				deferred: false,
+				reply: replyMock,
+			} as unknown as RepliableInteraction;
+
+			// Models distribute: a long idle wait for a button click, then work
+			// that on its own fits the budget. Together they exceed it.
+			const handler = async (ctx: {
+				restartTimeout: () => void;
+			}): Promise<void> => {
+				await new Promise((resolve) => setTimeout(resolve, 800));
+				ctx.restartTimeout();
+				await new Promise((resolve) => setTimeout(resolve, 800));
+			};
+
+			const handlePromise = handleInteraction(mockInteraction, handler, {
+				handlerTimeoutMs: 1000,
+				errorMessage: 'Timed out',
+			});
+
+			await vi.advanceTimersByTimeAsync(2000);
+
+			expect(await handlePromise).toBe(true);
+			expect(replyMock).not.toHaveBeenCalled();
+			vi.useRealTimers();
+		});
+
+		it('still times out work that overruns after a restart', async () => {
+			vi.useFakeTimers();
+			const replyMock = vi.fn().mockResolvedValue({ id: 'msg-err' });
+			const mockInteraction = {
+				id: 'int-1',
+				replied: false,
+				deferred: false,
+				reply: replyMock,
+			} as unknown as RepliableInteraction;
+
+			const handler = async (ctx: {
+				restartTimeout: () => void;
+			}): Promise<void> => {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+				ctx.restartTimeout();
+				await new Promise((resolve) => setTimeout(resolve, 5000));
+			};
+
+			const handlePromise = handleInteraction(mockInteraction, handler, {
+				handlerTimeoutMs: 1000,
+				errorMessage: 'Timed out',
+			});
+
+			await vi.advanceTimersByTimeAsync(2000);
+
+			expect(await handlePromise).toBe(false);
+			expect(replyMock).toHaveBeenCalledWith({
+				content: 'Timed out',
+				withResponse: true,
+			});
+			vi.useRealTimers();
+		});
+
 		it('handles deferReply timeout correctly and aborts handler', async () => {
 			vi.useFakeTimers();
 			const neverSettlingDefer = () => new Promise<void>(() => {});

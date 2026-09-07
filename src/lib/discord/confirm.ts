@@ -5,8 +5,13 @@ import {
 	type ChatInputCommandInteraction,
 	ComponentType,
 } from 'discord.js';
+import { trackInteractivePrompt } from '@/lib/discord/components.js';
 import { replyOrEdit } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
+
+/** Shown in place of a prompt that a restart left unusable. */
+const SHUTDOWN_PROMPT_NOTE =
+	'⚠️ The bot restarted while this prompt was open, so it can no longer be used. Run the command again — `/breakout status` will show the current state first.';
 
 export interface ConfirmActionOptions {
 	interaction: ChatInputCommandInteraction;
@@ -17,6 +22,14 @@ export interface ConfirmActionOptions {
 	onConfirm: () => Promise<void>;
 	onCancel?: () => Promise<void>;
 	timeMs?: number;
+	/**
+	 * Called once the user has answered, before `onConfirm` runs.
+	 *
+	 * Callers running inside `handleInteraction` pass `ctx.restartTimeout` here,
+	 * so the time this prompt spent idle is not charged against the work that
+	 * follows it.
+	 */
+	onInteractionCollected?: () => void;
 }
 
 /**
@@ -35,6 +48,7 @@ export async function confirmAction(
 		onConfirm,
 		onCancel,
 		timeMs = 60_000,
+		onInteractionCollected,
 	} = options;
 
 	const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -56,6 +70,14 @@ export async function confirmAction(
 	const collector = response.createMessageComponentCollector({
 		componentType: ComponentType.Button,
 		time: timeMs,
+	});
+
+	const untrack = trackInteractivePrompt(async () => {
+		collector.stop('shutdown');
+		await interaction.editReply({
+			content: SHUTDOWN_PROMPT_NOTE,
+			components: [],
+		});
 	});
 
 	return new Promise<boolean>((resolve) => {
@@ -84,6 +106,7 @@ export async function confirmAction(
 
 				if (i.customId === 'confirm_action') {
 					collector.stop('confirmed');
+					onInteractionCollected?.();
 					await i.update({
 						content: loadingContent,
 						components: [],
@@ -102,6 +125,13 @@ export async function confirmAction(
 		});
 
 		collector.on('end', async (_, reason) => {
+			untrack();
+
+			if (reason === 'shutdown') {
+				resolve(false);
+				return;
+			}
+
 			if (reason !== 'confirmed' && reason !== 'cancelled') {
 				try {
 					await interaction.editReply({

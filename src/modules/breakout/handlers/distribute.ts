@@ -4,33 +4,27 @@ import {
 	ButtonStyle,
 	type ChatInputCommandInteraction,
 	ComponentType,
-	GuildMember,
+	type GuildMember,
 	type StageChannel,
 	type VoiceChannel,
 } from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { trackInteractivePrompt } from '@/lib/discord/components.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction, replyOrEdit } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import { executeDistribute } from '@/modules/breakout/operations/distribute.js';
 import { getRooms } from '@/modules/breakout/state/state.js';
 import { distributeUsers } from '@/modules/breakout/utils/distribution.js';
 import { buildDistributionEmbed } from '@/modules/breakout/utils/embeds.js';
+import {
+	parseMentions,
+	resolveMentionedUserIds,
+} from '@/modules/breakout/utils/mentions.js';
 import type { OperationResult } from '@/types/index.js';
 
-/**
- * Parses user mention IDs (<@123456789>) from command string input.
- */
-function parseMentionedUserIds(input: string | null): Set<string> {
-	const userIds = new Set<string>();
-	if (!input) return userIds;
-
-	const mentionPattern = /<@!?(\d+)>/g;
-	const matches = input.matchAll(mentionPattern);
-	for (const match of matches) {
-		userIds.add(match[1]);
-	}
-	return userIds;
-}
+/** Shown in place of a prompt that a restart left unusable. */
+const SHUTDOWN_PROMPT_NOTE =
+	'⚠️ The bot restarted while this prompt was open, so it can no longer be used. Run the command again — `/breakout status` will show the current state first.';
 
 /**
  * Partitions target voice channel members into facilitator and regular participant lists.
@@ -69,6 +63,7 @@ async function runDistributionCollector(params: {
 	previewEmbed: import('discord.js').EmbedBuilder;
 	confirmButton: ButtonBuilder;
 	cancelButton: ButtonBuilder;
+	mentionWarning?: string;
 	log: typeof logger;
 }): Promise<void> {
 	const {
@@ -82,6 +77,7 @@ async function runDistributionCollector(params: {
 		previewEmbed,
 		confirmButton,
 		cancelButton,
+		mentionWarning,
 		log,
 	} = params;
 
@@ -92,6 +88,7 @@ async function runDistributionCollector(params: {
 
 	log.info('📤 Sending preview with confirmation buttons');
 	const response = await ctx.reply({
+		...(mentionWarning ? { content: mentionWarning } : {}),
 		embeds: [previewEmbed],
 		components: [row],
 	});
@@ -99,6 +96,15 @@ async function runDistributionCollector(params: {
 	const collector = response.createMessageComponentCollector({
 		componentType: ComponentType.Button,
 		time: 60_000,
+	});
+
+	const untrack = trackInteractivePrompt(async () => {
+		collector.stop('shutdown');
+		await ctx.editReply({
+			content: SHUTDOWN_PROMPT_NOTE,
+			embeds: [previewEmbed],
+			components: [],
+		});
 	});
 
 	return new Promise<void>((resolve) => {
@@ -128,6 +134,10 @@ async function runDistributionCollector(params: {
 				if (i.customId === 'confirm_distribute') {
 					collector.stop('confirmed');
 					log.info('✅ Distribution confirmed by user');
+
+					// The wait for a click is over; give the move loop the full
+					// budget rather than whatever the user left of it.
+					ctx.restartTimeout();
 
 					const totalMembersToMove = Object.values(distribution).reduce(
 						(sum, users) => sum + users.length,
@@ -221,7 +231,21 @@ async function runDistributionCollector(params: {
 		});
 
 		collector.on('end', async (_, reason) => {
-			if (reason !== 'confirmed' && reason !== 'cancelled') {
+			untrack();
+
+			if (reason === 'shutdown') {
+				log.warn('🛑 Distribution preview closed by shutdown');
+				resolve();
+				return;
+			}
+
+			// For 'confirmed', executeDistribute is actively running in the
+			// collect handler and will resolve this promise upon completion.
+			if (reason === 'confirmed') {
+				return;
+			}
+
+			if (reason !== 'cancelled') {
 				log.warn('⏱️ Distribution preview confirmation timed out');
 				const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
 					confirmButton.setDisabled(true),
@@ -262,19 +286,14 @@ export async function handleDistributeCommand(
 				return;
 			}
 
-			if (interaction.member instanceof GuildMember) {
-				const category = mainRoom.parent ?? undefined;
-				const check = preflightBreakout({
-					member: interaction.member,
-					voiceChannel: mainRoom,
-					category,
-					requireUserMove: true,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const check = preflightBreakoutFor(interaction, {
+				voiceChannel: mainRoom,
+				category: mainRoom.parent ?? undefined,
+				requireUserMove: true,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const log = logger.child({
@@ -284,20 +303,12 @@ export async function handleDistributeCommand(
 			});
 			log.info('🎯 Main room selected');
 
-			const excludedUsers = parseMentionedUserIds(
+			const parsedExclude = parseMentions(
 				interaction.options.getString('exclude'),
 			);
-			const rawFacilitators = parseMentionedUserIds(
+			const parsedFacilitators = parseMentions(
 				interaction.options.getString('facilitators'),
 			);
-
-			// Facilitators: Exclude takes precedence
-			const facilitators = new Set<string>();
-			for (const facId of rawFacilitators) {
-				if (!excludedUsers.has(facId)) {
-					facilitators.add(facId);
-				}
-			}
 
 			const guild = interaction.guild;
 			if (!guild) return;
@@ -330,6 +341,53 @@ export async function handleDistributeCommand(
 					`There are no users in ${mainRoom.name} or breakout rooms to distribute.`,
 				);
 				return;
+			}
+
+			// Role mentions are expanded against the pool of members actually in
+			// voice, so a role resolves to the people who can be distributed.
+			const excludedUsers = resolveMentionedUserIds(
+				parsedExclude,
+				allTargetMembers.values(),
+			);
+			const rawFacilitators = resolveMentionedUserIds(
+				parsedFacilitators,
+				allTargetMembers.values(),
+			);
+
+			// Facilitators: Exclude takes precedence
+			const facilitators = new Set<string>();
+			for (const facId of rawFacilitators) {
+				if (!excludedUsers.has(facId)) {
+					facilitators.add(facId);
+				}
+			}
+
+			const unrecognized = [
+				...parsedExclude.unrecognized,
+				...parsedFacilitators.unrecognized,
+			];
+			const MAX_REPORTED_TOKENS = 5;
+			const displayedTokens = unrecognized.slice(0, MAX_REPORTED_TOKENS);
+			const remainingCount = unrecognized.length - displayedTokens.length;
+			const formattedTokens = displayedTokens
+				.map(
+					(token) =>
+						`\`${token.length > 20 ? `${token.slice(0, 20)}…` : token}\``,
+				)
+				.join(', ');
+			const tokenSummary =
+				remainingCount > 0
+					? `${formattedTokens}, and ${remainingCount} more`
+					: formattedTokens;
+			const mentionWarning =
+				unrecognized.length > 0
+					? `⚠️ Ignored ${unrecognized.length} unrecognised entr${
+							unrecognized.length === 1 ? 'y' : 'ies'
+						}: ${tokenSummary}. Mention people or roles with @ so Discord sends them as mentions.`
+					: undefined;
+
+			if (mentionWarning) {
+				log.warn({ unrecognized }, '⚠️ Unparsed mention tokens in options');
 			}
 
 			const { facilitatorMembers, regularMembers } = partitionMembers(
@@ -385,6 +443,7 @@ export async function handleDistributeCommand(
 				previewEmbed,
 				confirmButton,
 				cancelButton,
+				mentionWarning,
 				log,
 			});
 		},

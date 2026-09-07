@@ -1,6 +1,6 @@
-import { type ChatInputCommandInteraction, GuildMember } from 'discord.js';
+import type { ChatInputCommandInteraction } from 'discord.js';
 import { confirmAction } from '@/lib/discord/confirm.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import { executeCreate } from '@/modules/breakout/operations/create.js';
@@ -18,21 +18,17 @@ export async function handleCreateCommand(
 	await handleInteraction(
 		interaction,
 		async (ctx) => {
-			if (interaction.member instanceof GuildMember) {
-				const category =
-					interaction.channel && 'parent' in interaction.channel
-						? interaction.channel.parent
-						: undefined;
-				const check = preflightBreakout({
-					member: interaction.member,
-					category: category ?? undefined,
-					requireManageChannels: true,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const category =
+				interaction.channel && 'parent' in interaction.channel
+					? interaction.channel.parent
+					: undefined;
+			const check = preflightBreakoutFor(interaction, {
+				category: category ?? undefined,
+				requireManageChannels: true,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const numRooms = interaction.options.getInteger('number', true);
@@ -66,6 +62,7 @@ export async function handleCreateCommand(
 					content: `⚠️ ${totalMembers} member(s) are still in existing breakout rooms and no main room is configured. Creating new rooms will disconnect them from voice.`,
 					confirmLabel: `Recreate rooms and disconnect ${totalMembers} member(s)`,
 					loadingContent: '⏳ Creating breakout rooms...',
+					onInteractionCollected: ctx.restartTimeout,
 					onConfirm: async () => {
 						const result = await executeCreate(interaction, numRooms);
 						if (result.success) {

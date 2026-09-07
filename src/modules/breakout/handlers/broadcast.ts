@@ -1,9 +1,4 @@
-import {
-	type ChatInputCommandInteraction,
-	EmbedBuilder,
-	GuildMember,
-} from 'discord.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { type ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import { broadcastToBreakoutRooms } from '@/modules/breakout/services/message.js';
@@ -19,17 +14,6 @@ export async function handleBroadcastCommand(
 	await handleInteraction(
 		interaction,
 		async (ctx) => {
-			if (interaction.member instanceof GuildMember) {
-				const check = preflightBreakout({
-					member: interaction.member,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
-			}
-
 			const { guild } = interaction;
 			if (!guild) return;
 			const message = interaction.options.getString('message', true);

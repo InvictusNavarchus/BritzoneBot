@@ -1,6 +1,6 @@
-import { type ChatInputCommandInteraction, GuildMember } from 'discord.js';
+import type { ChatInputCommandInteraction } from 'discord.js';
 import { confirmAction } from '@/lib/discord/confirm.js';
-import { preflightBreakout } from '@/lib/discord/permission.js';
+import { preflightBreakoutFor } from '@/lib/discord/permission.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import { executeDelete } from '@/modules/breakout/operations/delete.js';
@@ -17,21 +17,17 @@ export async function handleDeleteCommand(
 	await handleInteraction(
 		interaction,
 		async (ctx) => {
-			if (interaction.member instanceof GuildMember) {
-				const category =
-					interaction.channel && 'parent' in interaction.channel
-						? interaction.channel.parent
-						: undefined;
-				const check = preflightBreakout({
-					member: interaction.member,
-					category: category ?? undefined,
-					requireManageChannels: true,
-				});
-
-				if (!check.ok) {
-					await ctx.reply(check.reason ?? 'Permission check failed.');
-					return;
-				}
+			const category =
+				interaction.channel && 'parent' in interaction.channel
+					? interaction.channel.parent
+					: undefined;
+			const check = preflightBreakoutFor(interaction, {
+				category: category ?? undefined,
+				requireManageChannels: true,
+			});
+			if (!check.ok) {
+				await ctx.reply(check.reason ?? 'Permission check failed.');
+				return;
 			}
 
 			const log = logger.child({
@@ -61,6 +57,7 @@ export async function handleDeleteCommand(
 					content: `⚠️ ${totalMembers} member(s) are still in breakout rooms and no main room is configured. Deleting will disconnect them from voice.`,
 					confirmLabel: `Delete and disconnect ${totalMembers} member(s)`,
 					loadingContent: '⏳ Deleting breakout rooms...',
+					onInteractionCollected: ctx.restartTimeout,
 					onConfirm: async () => {
 						const result = await executeDelete(interaction);
 						if (result.success) {

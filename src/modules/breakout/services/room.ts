@@ -1,16 +1,13 @@
-import {
-	ChannelType,
-	type CommandInteraction,
-	type Guild,
-	type VoiceChannel,
-} from 'discord.js';
+import type { CommandInteraction, Guild, VoiceChannel } from 'discord.js';
 import { createChannel } from '@/lib/discord/channel.js';
 import { logger } from '@/lib/logger.js';
 import {
 	clearSession,
 	getRooms,
+	getSessionCategoryId,
 	storeRoomIds,
 } from '@/modules/breakout/state/state.js';
+import { findRoomsByNamePattern } from '@/modules/breakout/utils/rooms.js';
 
 interface ExistingRoomsResult {
 	exists: boolean;
@@ -53,15 +50,11 @@ export async function hasExistingBreakoutRooms(
 		}
 	}
 
-	// Fallback: Check for rooms by naming pattern
-	const patternRooms = Array.from(
-		guild.channels.cache
-			.filter(
-				(channel): channel is VoiceChannel =>
-					channel.type === ChannelType.GuildVoice &&
-					channel.name.startsWith('breakout-room-'),
-			)
-			.values(),
+	// Fallback: check for rooms by naming pattern, confined to the session's
+	// category so rooms belonging to another category are never adopted.
+	const patternRooms = findRoomsByNamePattern(
+		guild,
+		getSessionCategoryId(guild),
 	);
 
 	if (patternRooms.length > 0) {

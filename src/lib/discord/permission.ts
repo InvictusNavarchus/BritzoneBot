@@ -2,7 +2,7 @@ import {
 	type CategoryChannel,
 	type Guild,
 	type GuildBasedChannel,
-	type GuildMember,
+	GuildMember,
 	type GuildTextBasedChannel,
 	PermissionsBitField,
 	type StageChannel,
@@ -67,16 +67,31 @@ export function getMissingBotPermissions(
 
 	if (!perms) return requiredPermissions;
 
-	const effectiveRequired = [...requiredPermissions];
-	if (
-		channel &&
-		!effectiveRequired.includes(PermissionsBitField.Flags.ViewChannel)
-	) {
-		effectiveRequired.unshift(PermissionsBitField.Flags.ViewChannel);
-	}
-
-	return effectiveRequired.filter((perm) => !perms.has(perm));
+	return requiredPermissions.filter((perm) => !perms.has(perm));
 }
+
+/**
+ * Permissions the bot needs to create, rename and delete breakout channels in a
+ * category (or guild-wide when no category is in play).
+ */
+const CHANNEL_MANAGEMENT_PERMISSIONS = [
+	PermissionsBitField.Flags.ManageChannels,
+	PermissionsBitField.Flags.ViewChannel,
+	PermissionsBitField.Flags.Connect,
+];
+
+/** Permissions the bot needs to move members in and out of a voice channel. */
+const VOICE_MOVE_PERMISSIONS = [
+	PermissionsBitField.Flags.Connect,
+	PermissionsBitField.Flags.MoveMembers,
+	PermissionsBitField.Flags.ViewChannel,
+];
+
+/** Permissions the bot needs to post into a channel's text chat. */
+const TEXT_SEND_PERMISSIONS = [
+	PermissionsBitField.Flags.ViewChannel,
+	PermissionsBitField.Flags.SendMessages,
+];
 
 /**
  * Utility to convert permission bitfield flags into human-readable labels.
@@ -100,6 +115,7 @@ export function canBotManageChannels(
 	return (
 		getMissingBotPermissions(guild, category, [
 			PermissionsBitField.Flags.ManageChannels,
+			PermissionsBitField.Flags.ViewChannel,
 		]).length === 0
 	);
 }
@@ -112,11 +128,8 @@ export function canBotMoveMembers(
 	voiceChannel?: VoiceChannel | StageChannel | GuildBasedChannel | null,
 ): boolean {
 	return (
-		getMissingBotPermissions(guild, voiceChannel, [
-			PermissionsBitField.Flags.Connect,
-			PermissionsBitField.Flags.MoveMembers,
-			PermissionsBitField.Flags.ViewChannel,
-		]).length === 0
+		getMissingBotPermissions(guild, voiceChannel, VOICE_MOVE_PERMISSIONS)
+			.length === 0
 	);
 }
 
@@ -128,10 +141,8 @@ export function canBotSendMessage(
 	textChannel?: TextChannel | GuildTextBasedChannel | GuildBasedChannel | null,
 ): boolean {
 	return (
-		getMissingBotPermissions(guild, textChannel, [
-			PermissionsBitField.Flags.ViewChannel,
-			PermissionsBitField.Flags.SendMessages,
-		]).length === 0
+		getMissingBotPermissions(guild, textChannel, TEXT_SEND_PERMISSIONS)
+			.length === 0
 	);
 }
 
@@ -208,19 +219,31 @@ export function preflightBreakout(
 		};
 	}
 
-	// 3. Bot capability checks
-	if (category) {
-		const missing = getMissingBotPermissions(guild, category, [
-			PermissionsBitField.Flags.ManageChannels,
-			PermissionsBitField.Flags.ViewChannel,
-			PermissionsBitField.Flags.Connect,
-		]);
+	// 3. Bot capability checks.
+	//
+	// Every failure is collected before returning. Reporting only the first one
+	// meant an admin who fixed the category came straight back to a second error
+	// about the voice channel, then a third about a breakout room — one
+	// round-trip through Discord's permission UI per missing grant.
+	const failures: string[] = [];
+
+	const recordMissing = (
+		channel: GuildBasedChannel | null | undefined,
+		required: bigint[],
+		where: string,
+	): void => {
+		const missing = getMissingBotPermissions(guild, channel, required);
 		if (missing.length > 0) {
-			return {
-				ok: false,
-				reason: `I don't have **${formatPermissionNames(missing)}** permission in the target category. Ask an admin to grant it.`,
-			};
+			failures.push(`**${formatPermissionNames(missing)}** ${where}`);
 		}
+	};
+
+	if (category) {
+		recordMissing(
+			category,
+			CHANNEL_MANAGEMENT_PERMISSIONS,
+			`in the target category (${category.name})`,
+		);
 	}
 
 	if (
@@ -228,68 +251,97 @@ export function preflightBreakout(
 		!category &&
 		(!channels || channels.length === 0)
 	) {
-		const missing = getMissingBotPermissions(guild, null, [
-			PermissionsBitField.Flags.ManageChannels,
-			PermissionsBitField.Flags.ViewChannel,
-			PermissionsBitField.Flags.Connect,
-		]);
-		if (missing.length > 0) {
-			return {
-				ok: false,
-				reason: `I don't have **${formatPermissionNames(missing)}** permission in this server. Ask an admin to grant it.`,
-			};
-		}
+		recordMissing(null, CHANNEL_MANAGEMENT_PERMISSIONS, 'in this server');
 	}
 
 	if (channels && channels.length > 0) {
+		const roomFailures = new Map<string, string[]>();
 		for (const ch of channels) {
 			if (!ch) continue;
-
-			const missing = getMissingBotPermissions(guild, ch, [
-				PermissionsBitField.Flags.ManageChannels,
-				PermissionsBitField.Flags.ViewChannel,
-				PermissionsBitField.Flags.Connect,
-			]);
-
+			const missing = getMissingBotPermissions(
+				guild,
+				ch,
+				CHANNEL_MANAGEMENT_PERMISSIONS,
+			);
 			if (missing.length > 0) {
-				return {
-					ok: false,
-					reason: `I don't have **${formatPermissionNames(
-						missing,
-					)}** permission(s) on breakout room channel (${
-						ch.name
-					}). Ask an admin to grant it.`,
-				};
+				const permNames = formatPermissionNames(missing);
+				const list = roomFailures.get(permNames) ?? [];
+				list.push(ch.name);
+				roomFailures.set(permNames, list);
+			}
+		}
+		for (const [permNames, roomNames] of roomFailures) {
+			if (roomNames.length === 1) {
+				failures.push(`**${permNames}** on breakout room ${roomNames[0]}`);
+			} else {
+				const roomSummary =
+					roomNames.length <= 3
+						? roomNames.map((n) => `\`${n}\``).join(', ')
+						: `${roomNames
+								.slice(0, 3)
+								.map((n) => `\`${n}\``)
+								.join(', ')} (and ${roomNames.length - 3} more)`;
+				failures.push(
+					`**${permNames}** on ${roomNames.length} breakout rooms (${roomSummary})`,
+				);
 			}
 		}
 	}
 
 	if (voiceChannel) {
-		const missing = getMissingBotPermissions(guild, voiceChannel, [
-			PermissionsBitField.Flags.Connect,
-			PermissionsBitField.Flags.MoveMembers,
-			PermissionsBitField.Flags.ViewChannel,
-		]);
-		if (missing.length > 0) {
-			return {
-				ok: false,
-				reason: `I don't have **${formatPermissionNames(missing)}** permission(s) in that voice channel.`,
-			};
-		}
+		recordMissing(
+			voiceChannel,
+			VOICE_MOVE_PERMISSIONS,
+			`in voice channel ${voiceChannel.name}`,
+		);
 	}
 
 	if (textChannel) {
-		const missing = getMissingBotPermissions(guild, textChannel, [
-			PermissionsBitField.Flags.ViewChannel,
-			PermissionsBitField.Flags.SendMessages,
-		]);
-		if (missing.length > 0) {
-			return {
-				ok: false,
-				reason: `I don't have **${formatPermissionNames(missing)}** permission(s) in that channel.`,
-			};
-		}
+		recordMissing(
+			textChannel,
+			TEXT_SEND_PERMISSIONS,
+			`in channel ${textChannel.name}`,
+		);
+	}
+
+	if (failures.length > 0) {
+		const intro =
+			failures.length === 1
+				? "I'm missing a permission:"
+				: `I'm missing ${failures.length} permissions:`;
+		return {
+			ok: false,
+			reason: `${intro}\n${failures
+				.map((failure) => `• ${failure}`)
+				.join('\n')}\nAsk an admin to grant them.`,
+		};
 	}
 
 	return { ok: true };
+}
+
+/**
+ * Runs {@link preflightBreakout} for the member who invoked an interaction,
+ * failing closed when that member is not fully hydrated.
+ *
+ * Handlers previously wrote `if (interaction.member instanceof GuildMember)`
+ * around their permission check, which skips the check entirely when the
+ * cache misses — precisely the case where verification matters most. Wrapping
+ * it here means the resource-specific checks cannot accidentally be written
+ * fail-open, and every caller reports the same reason when they cannot be
+ * verified.
+ */
+export function preflightBreakoutFor(
+	interaction: { member: unknown },
+	opts: Omit<BreakoutPreflightOptions, 'member'> = {},
+	guildConfigMap?: GuildRoleConfigMap,
+): BreakoutPreflightResult {
+	if (!(interaction.member instanceof GuildMember)) {
+		return { ok: false, reason: 'Unable to verify your permissions.' };
+	}
+
+	return preflightBreakout(
+		{ member: interaction.member, ...opts },
+		guildConfigMap ?? loadGuildConfig(),
+	);
 }

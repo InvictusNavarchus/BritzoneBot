@@ -7,6 +7,7 @@ import {
 	type VoiceChannel,
 } from 'discord.js';
 import { logger } from '@/lib/logger.js';
+import { findRoomsByNamePattern } from '@/modules/breakout/utils/rooms.js';
 
 export type BreakoutSubcommand =
 	| 'create'
@@ -60,6 +61,11 @@ export interface CurrentOperation {
 interface PersistedSession {
 	mainRoomId?: string;
 	roomIds?: string[];
+	/**
+	 * Category the session's breakout rooms were created in, used to scope the
+	 * name-pattern fallback so rooms elsewhere in the guild are never adopted.
+	 */
+	categoryId?: string;
 }
 
 /**
@@ -467,18 +473,27 @@ export async function getCompletedSteps(
 export async function storeRoomIds(
 	guildId: string,
 	roomIds: string[],
+	categoryId?: string,
 ): Promise<void> {
 	await initializeState();
 	const guildState = getGuildState(guildId);
 	guildState.session = {
 		...guildState.session,
 		roomIds,
+		...(categoryId === undefined ? {} : { categoryId }),
 	};
 	logger.debug(
-		{ guildId, count: roomIds.length },
+		{ guildId, count: roomIds.length, categoryId },
 		'📝 Stored breakout room IDs',
 	);
 	await saveState();
+}
+
+/**
+ * Gets the category the guild's breakout rooms were created in, if recorded.
+ */
+export function getSessionCategoryId(guild: Guild): string | undefined {
+	return inMemoryState[guild.id]?.session?.categoryId;
 }
 
 /**
@@ -512,15 +527,7 @@ export function getRooms(guild: Guild): VoiceChannel[] {
 	const roomIds = guildState?.session?.roomIds || [];
 
 	if (roomIds.length === 0) {
-		return Array.from(
-			guild.channels.cache
-				.filter(
-					(channel): channel is VoiceChannel =>
-						channel.type === ChannelType.GuildVoice &&
-						channel.name.startsWith('breakout-room-'),
-				)
-				.values(),
-		);
+		return findRoomsByNamePattern(guild, guildState?.session?.categoryId);
 	}
 
 	return roomIds

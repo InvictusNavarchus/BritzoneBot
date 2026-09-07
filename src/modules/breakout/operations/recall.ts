@@ -13,9 +13,11 @@ import {
 	getCompletedSteps,
 	getCurrentOperation,
 	getRooms,
+	getSessionCategoryId,
 	startOperation,
 	updateProgress,
 } from '@/modules/breakout/state/state.js';
+import { findRoomsByNamePattern } from '@/modules/breakout/utils/rooms.js';
 import type { OperationResult } from '@/types/index.js';
 
 /**
@@ -74,17 +76,13 @@ export async function executeRecall(
 		// Get breakout rooms
 		breakoutRooms = getRooms(interaction.guild);
 
-		// If no stored rooms, identify them by name pattern as fallback
+		// If no stored rooms, identify them by name pattern as fallback, scoped to
+		// the session's category so unrelated rooms are never picked up.
 		if (!breakoutRooms || breakoutRooms.length === 0) {
-			breakoutRooms = Array.from(
-				interaction.guild.channels.cache
-					.filter(
-						(channel) =>
-							channel.type === ChannelType.GuildVoice &&
-							channel.name.startsWith('breakout-room-'),
-					)
-					.values(),
-			) as VoiceChannel[];
+			breakoutRooms = findRoomsByNamePattern(
+				interaction.guild,
+				getSessionCategoryId(interaction.guild),
+			);
 		}
 
 		if (breakoutRooms.length === 0) {

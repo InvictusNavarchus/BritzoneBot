@@ -184,13 +184,17 @@ export async function executeCreate(
 			}
 		}
 
-		// Store the created breakout rooms
+		// Store the created breakout rooms alongside the category they live in, so
+		// the name-pattern fallback can be confined to this session's rooms.
+		const categoryId = createdChannels[0]?.parentId ?? undefined;
 		await updateProgress(guildId, 'store_rooms', {
 			roomIds: createdChannels.map((c) => c.id),
+			categoryId,
 		});
 		await storeRoomIds(
 			guildId,
 			createdChannels.map((c) => c.id),
+			categoryId,
 		);
 
 		// Complete operation

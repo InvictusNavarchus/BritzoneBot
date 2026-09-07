@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	FGD_TIMER_PRESETS,
+	formatDuration,
 	formatReminderMessage,
 	formatScheduleSummary,
 	formatTimerStatus,
@@ -76,6 +77,25 @@ describe('timerPresets', () => {
 				'⏱️ **1 minute remaining** in this breakout session.',
 			);
 		});
+
+		it('renders sub-minute thresholds in seconds rather than fractional minutes', () => {
+			// The 3s testing preset schedules 0.03 and 0.015 minute thresholds.
+			expect(formatReminderMessage(0.03)).toBe(
+				'⏱️ **1.8 seconds remaining** in this breakout session.',
+			);
+			expect(formatReminderMessage(0.015)).toBe(
+				'⏱️ **0.9 seconds remaining** in this breakout session.',
+			);
+		});
+	});
+
+	describe('formatDuration', () => {
+		it('pluralises minutes and switches to seconds below one minute', () => {
+			expect(formatDuration(45)).toBe('45 minutes');
+			expect(formatDuration(1)).toBe('1 minute');
+			expect(formatDuration(0.05)).toBe('3 seconds');
+			expect(formatDuration(1 / 60)).toBe('1 second');
+		});
 	});
 
 	describe('getTimerSchedule', () => {
@@ -115,6 +135,12 @@ describe('timerPresets', () => {
 			const schedule = getTimerSchedule(45);
 			const summary = formatScheduleSummary(schedule);
 			expect(summary).toBe('Reminders scheduled at 22m, 10m, 3m remaining.');
+		});
+
+		it('summarises sub-minute schedules in seconds', () => {
+			expect(formatScheduleSummary(getTimerSchedule(0.05))).toBe(
+				'Reminders scheduled at 1.8s, 0.9s remaining.',
+			);
 		});
 
 		it('handles empty schedules gracefully', () => {

@@ -3,6 +3,7 @@ import { preflightBreakout } from '@/lib/discord/permission.js';
 import { handleInteraction } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import {
+	formatDuration,
 	formatScheduleSummary,
 	getTimerSchedule,
 	isPresetDuration,
@@ -141,10 +142,7 @@ export async function handleTimerCommand(
 					'ℹ️ Auto-recall is disabled (no main room configured). Run `/breakout recall` manually when ready.';
 			}
 
-			const durationText =
-				minutes < 1
-					? `${Math.round(minutes * 60)} seconds`
-					: `${minutes} minutes`;
+			const durationText = formatDuration(minutes);
 
 			await ctx.reply(
 				`⏱️ **Breakout timer set for ${durationText}.**\n${summary}\n${autoRecallNote}`,

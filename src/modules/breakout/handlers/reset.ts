@@ -46,6 +46,6 @@ export async function handleResetCommand(
 				} recorded).\nBreakout rooms, members and any active timer are untouched — run \`/breakout status\` to see what still exists.`,
 			);
 		},
-		{ ephemeral: true },
+		{ ephemeral: true, deferReply: true },
 	);
 }

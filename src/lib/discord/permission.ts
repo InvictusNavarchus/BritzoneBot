@@ -255,13 +255,36 @@ export function preflightBreakout(
 	}
 
 	if (channels && channels.length > 0) {
+		const roomFailures = new Map<string, string[]>();
 		for (const ch of channels) {
 			if (!ch) continue;
-			recordMissing(
+			const missing = getMissingBotPermissions(
+				guild,
 				ch,
 				CHANNEL_MANAGEMENT_PERMISSIONS,
-				`on breakout room ${ch.name}`,
 			);
+			if (missing.length > 0) {
+				const permNames = formatPermissionNames(missing);
+				const list = roomFailures.get(permNames) ?? [];
+				list.push(ch.name);
+				roomFailures.set(permNames, list);
+			}
+		}
+		for (const [permNames, roomNames] of roomFailures) {
+			if (roomNames.length === 1) {
+				failures.push(`**${permNames}** on breakout room ${roomNames[0]}`);
+			} else {
+				const roomSummary =
+					roomNames.length <= 3
+						? roomNames.map((n) => `\`${n}\``).join(', ')
+						: `${roomNames
+								.slice(0, 3)
+								.map((n) => `\`${n}\``)
+								.join(', ')} (and ${roomNames.length - 3} more)`;
+				failures.push(
+					`**${permNames}** on ${roomNames.length} breakout rooms (${roomSummary})`,
+				);
+			}
 		}
 	}
 

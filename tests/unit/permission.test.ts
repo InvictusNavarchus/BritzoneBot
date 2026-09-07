@@ -259,6 +259,44 @@ describe('Discord Permission Utilities (permission.ts)', () => {
 			expect(result.reason).toContain("I'm missing 3 permissions:");
 		});
 
+		it('groups multiple breakout rooms sharing identical missing permissions', () => {
+			const me = { id: 'bot-1' };
+			const denyAll = () => ({ has: () => false });
+			const rooms = [
+				{
+					name: 'breakout-room-1',
+					permissionsFor: denyAll,
+				} as unknown as VoiceChannel,
+				{
+					name: 'breakout-room-2',
+					permissionsFor: denyAll,
+				} as unknown as VoiceChannel,
+				{
+					name: 'breakout-room-3',
+					permissionsFor: denyAll,
+				} as unknown as VoiceChannel,
+				{
+					name: 'breakout-room-4',
+					permissionsFor: denyAll,
+				} as unknown as VoiceChannel,
+			];
+			const member = {
+				id: 'owner-999',
+				guild: { id: 'guild-1', ownerId: 'owner-999', members: { me } },
+				roles: { cache: { has: () => false } },
+				permissions: { has: () => true },
+			} as unknown as GuildMember;
+
+			const result = preflightBreakout({
+				member,
+				channels: rooms,
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.reason).toContain('4 breakout rooms');
+			expect(result.reason).toContain('(and 1 more)');
+		});
+
 		it('uses singular phrasing for a lone failure', () => {
 			const me = { id: 'bot-1' };
 			const category = {

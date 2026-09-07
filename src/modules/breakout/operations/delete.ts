@@ -106,6 +106,22 @@ export async function executeDelete(
 		}
 
 		if (breakoutRooms.length === 0) {
+			if (isResuming) {
+				// All tracked rooms were already deleted by hand or in a prior run.
+				// Complete cleanup so the operation does not remain permanently wedged.
+				await cancelBreakoutTimer(guildId);
+				await updateProgress(guildId, 'clear_session');
+				await clearSession(guildId);
+				await completeOperation(guildId);
+
+				log.info('🎉 Resumed delete found all breakout rooms already deleted.');
+				return {
+					success: true,
+					message:
+						'All breakout rooms were already deleted. Cleaned up session state!',
+				};
+			}
+
 			log.warn('⚠️ No breakout rooms found to delete.');
 			return {
 				success: false,

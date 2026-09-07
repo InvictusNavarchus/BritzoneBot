@@ -117,6 +117,7 @@ function getStateFile(): string {
 const MAX_HISTORY = 20;
 let inMemoryState: Record<string, GuildState> = {};
 let initialized: boolean = false;
+let initPromise: Promise<void> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
 
 /**
@@ -125,24 +126,43 @@ let saveQueue: Promise<void> = Promise.resolve();
 export function resetStateForTest(): void {
 	inMemoryState = {};
 	initialized = false;
+	initPromise = null;
 	saveQueue = Promise.resolve();
 }
 
 /**
  * Initialize the state manager, ensuring the data directory exists
- * and loading any existing state
+ * and loading any existing state.
+ *
+ * Nearly every exported function awaits this, so concurrent callers are the
+ * normal case rather than the exception. The in-flight promise is memoised
+ * because `initialized` is only set once `loadState()` has resolved: without it,
+ * two commands arriving together both ran `loadState()`, and the second
+ * `inMemoryState = JSON.parse(data)` replaced the object graph the first had
+ * already begun writing into, silently discarding its mutations.
+ *
+ * The memo is cleared on failure so a transient filesystem error can be retried
+ * by the next caller rather than poisoning the process.
  */
 export async function initializeState(): Promise<void> {
 	if (initialized) return;
 
-	try {
-		await fs.mkdir(getStatePath(), { recursive: true });
-		await loadState();
-		initialized = true;
-		logger.info('📂 StateManager initialized');
-	} catch (error) {
-		logger.error({ err: error }, '❌ Failed to initialize StateManager');
+	if (!initPromise) {
+		initPromise = (async () => {
+			try {
+				await fs.mkdir(getStatePath(), { recursive: true });
+				await loadState();
+				initialized = true;
+				logger.info('📂 StateManager initialized');
+			} catch (error) {
+				logger.error({ err: error }, '❌ Failed to initialize StateManager');
+			} finally {
+				initPromise = null;
+			}
+		})();
 	}
+
+	return initPromise;
 }
 
 /**

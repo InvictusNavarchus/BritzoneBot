@@ -175,6 +175,62 @@ describe('StateManager (state.ts)', () => {
 		});
 	});
 
+	describe('concurrent initialization', () => {
+		it('loads persisted state once when many callers race at boot', async () => {
+			await fs.writeFile(
+				process.env.STATE_FILE as string,
+				JSON.stringify({
+					'guild-race': { session: { mainRoomId: 'main-race' } },
+				}),
+			);
+			resetStateForTest();
+
+			// Every exported function awaits initializeState, so a burst of commands
+			// arriving together is the normal case.
+			const results = await Promise.all([
+				getCurrentOperation('guild-race'),
+				getTimerData('guild-race'),
+				hasOperationInProgress('guild-race'),
+				getAllGuildStates(),
+			]);
+
+			const allStates = results[3] as Awaited<
+				ReturnType<typeof getAllGuildStates>
+			>;
+			expect(allStates['guild-race']?.session?.mainRoomId).toBe('main-race');
+		});
+
+		it('does not let a concurrent load discard a write already made', async () => {
+			await fs.writeFile(
+				process.env.STATE_FILE as string,
+				JSON.stringify({ 'guild-race': { session: { roomIds: ['r1'] } } }),
+			);
+			resetStateForTest();
+
+			// A write racing a first read must survive: previously the second
+			// loadState() replaced inMemoryState wholesale and dropped it.
+			await Promise.all([
+				setMainRoomId('guild-race', 'main-written'),
+				getAllGuildStates(),
+				storeRoomIds('guild-race', ['r1', 'r2']),
+			]);
+
+			const allStates = await getAllGuildStates();
+			expect(allStates['guild-race']?.session?.mainRoomId).toBe('main-written');
+			expect(allStates['guild-race']?.session?.roomIds).toEqual(['r1', 'r2']);
+		});
+
+		it('retries initialization after a failure instead of caching it', async () => {
+			resetStateForTest();
+			process.env.STATE_FILE = path.join(tempDir, 'nested', 'state.json');
+			process.env.STATE_DIR = path.join(tempDir, 'nested');
+
+			await setMainRoomId('guild-retry', 'main-1');
+			const allStates = await getAllGuildStates();
+			expect(allStates['guild-retry']?.session?.mainRoomId).toBe('main-1');
+		});
+	});
+
 	describe('legacy timer state migration', () => {
 		it('folds a legacy fiveMinSent flag into sentReminders on load', async () => {
 			await fs.writeFile(

@@ -175,6 +175,37 @@ describe('StateManager (state.ts)', () => {
 		});
 	});
 
+	describe('operation history retention', () => {
+		it('archives completed operations without their step map', async () => {
+			const guildId = 'guild-history';
+			await startOperation(guildId, 'distribute', { mainRoomId: 'main-1' });
+			await updateProgress(guildId, 'member_moved_1_to_r1');
+			await updateProgress(guildId, 'member_moved_2_to_r1');
+			await updateProgress(guildId, 'member_moved_3_to_r2');
+
+			expect(Object.keys(await getCompletedSteps(guildId))).toHaveLength(3);
+
+			await completeOperation(guildId);
+
+			const allStates = await getAllGuildStates();
+			const history = allStates[guildId]?.history;
+			expect(history).toHaveLength(1);
+			expect(history?.[0]?.progress.steps).toEqual({});
+			expect(history?.[0]?.progress.stepCount).toBe(3);
+			expect(history?.[0]?.type).toBe('distribute');
+			expect(history?.[0]?.progress.completed).toBe(true);
+		});
+
+		it('leaves the live operation steps intact while it is running', async () => {
+			const guildId = 'guild-history-live';
+			await startOperation(guildId, 'recall', {});
+			await updateProgress(guildId, 'room_recalled_r1', { movedCount: 2 });
+
+			const steps = await getCompletedSteps(guildId);
+			expect(steps.room_recalled_r1?.movedCount).toBe(2);
+		});
+	});
+
 	describe('concurrent initialization', () => {
 		it('loads persisted state once when many callers race at boot', async () => {
 			await fs.writeFile(

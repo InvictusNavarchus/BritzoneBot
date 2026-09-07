@@ -37,6 +37,11 @@ interface OperationProgress {
 	steps: Record<string, OperationStep>;
 	startTime: number;
 	completedTime?: number;
+	/**
+	 * Number of steps the operation recorded, kept when the step map itself is
+	 * dropped on archival so history still says how much work was done.
+	 */
+	stepCount?: number;
 }
 
 /**
@@ -285,17 +290,28 @@ export async function completeOperation(guildId: string): Promise<void> {
 
 	if (!guildState?.currentOperation) return;
 
-	guildState.currentOperation.progress.completed = true;
-	guildState.currentOperation.progress.completedTime = Date.now();
+	const operation = guildState.currentOperation;
+	operation.progress.completed = true;
+	operation.progress.completedTime = Date.now();
 
 	if (!guildState.history) {
 		guildState.history = [];
 	}
-	guildState.history.push(guildState.currentOperation);
+
+	// Archive without the step map. Steps are resume checkpoints — one entry per
+	// room created, per member moved — so a single distribution can record
+	// hundreds. They are meaningless once the operation is complete, but
+	// MAX_HISTORY kept twenty such maps alive, growing the state file (rewritten
+	// in full on every save) without bound.
+	const stepCount = Object.keys(operation.progress.steps).length;
+	guildState.history.push({
+		...operation,
+		progress: { ...operation.progress, steps: {}, stepCount },
+	});
 	guildState.history = guildState.history.slice(-MAX_HISTORY);
 	delete guildState.currentOperation;
 
-	logger.info({ guildId }, '✅ Completed breakout operation');
+	logger.info({ guildId, stepCount }, '✅ Completed breakout operation');
 	await saveState();
 }
 

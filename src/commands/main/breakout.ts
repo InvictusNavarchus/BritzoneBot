@@ -29,6 +29,23 @@ import {
 } from '@/modules/breakout/state/state.js';
 import type { Command } from '@/types/index.js';
 
+/**
+ * Subcommands that an interrupted operation must never block.
+ *
+ * The operation lock exists to stop two conflicting mutations of the same rooms
+ * and members. These subcommands mutate neither: `status` reads, `timer-cancel`
+ * only tears work down, and the two messaging subcommands write to a text
+ * channel. Blocking them turned a single wedged operation into a total lockout —
+ * a stuck `create` also refused `timer-cancel` and `delete`, leaving no way out
+ * short of editing data/breakoutState.json by hand.
+ */
+const LOCK_EXEMPT_SUBCOMMANDS: ReadonlySet<BreakoutSubcommand> = new Set([
+	'status',
+	'timer-cancel',
+	'broadcast',
+	'send-message',
+]);
+
 const subcommandHandlers: Record<
 	BreakoutSubcommand,
 	(interaction: ChatInputCommandInteraction) => Promise<void>
@@ -243,8 +260,9 @@ const command: Command = {
 		const subcommand =
 			interaction.options.getSubcommand() as BreakoutSubcommand;
 
-		// Check for interrupted operations (exempt status command)
-		if (subcommand !== 'status') {
+		// Check for interrupted operations (read-only and teardown subcommands are
+		// exempt, so a wedged operation never removes the escape routes)
+		if (!LOCK_EXEMPT_SUBCOMMANDS.has(subcommand)) {
 			const inProgress = await hasOperationInProgress(interaction.guildId);
 			if (inProgress) {
 				const currentOp = await getCurrentOperation(interaction.guildId);

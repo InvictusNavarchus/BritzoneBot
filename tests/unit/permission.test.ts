@@ -154,6 +154,23 @@ describe('Discord Permission Utilities (permission.ts)', () => {
 			]);
 		});
 
+		it('reports only the permissions the caller asked about', () => {
+			// ViewChannel used to be unshifted into every channel-scoped request,
+			// so the message could name a permission the caller never checked.
+			const me = { id: 'bot-1' };
+			const channel = {
+				permissionsFor: () => ({ has: () => false }),
+			} as unknown as VoiceChannel;
+			const guild = { members: { me } } as unknown as Guild;
+
+			const missing = getMissingBotPermissions(guild, channel, [
+				PermissionsBitField.Flags.ManageChannels,
+			]);
+
+			expect(missing).toEqual([PermissionsBitField.Flags.ManageChannels]);
+			expect(missing).not.toContain(PermissionsBitField.Flags.ViewChannel);
+		});
+
 		it('formatPermissionNames converts bitfield array into formatted string', () => {
 			const formatted = formatPermissionNames([
 				PermissionsBitField.Flags.ManageChannels,
@@ -200,6 +217,79 @@ describe('Discord Permission Utilities (permission.ts)', () => {
 			);
 			expect(result.ok).toBe(false);
 			expect(result.reason).toContain('manager role');
+		});
+
+		it('reports every failing scope at once rather than the first', () => {
+			const me = { id: 'bot-1' };
+			// The bot can do nothing anywhere, so the category, the breakout room
+			// and the voice channel should all be named in one message.
+			const denyAll = () => ({ has: () => false });
+			const category = {
+				name: 'FGD Sessions',
+				permissionsFor: denyAll,
+			} as unknown as CategoryChannel;
+			const room = {
+				name: 'breakout-room-1',
+				permissionsFor: denyAll,
+			} as unknown as VoiceChannel;
+			const voiceChannel = {
+				name: 'Main Room',
+				permissionsFor: denyAll,
+			} as unknown as VoiceChannel;
+
+			const member = {
+				id: 'owner-999',
+				guild: { id: 'guild-1', ownerId: 'owner-999', members: { me } },
+				roles: { cache: { has: () => false } },
+				permissions: { has: () => true },
+			} as unknown as GuildMember;
+
+			const result = preflightBreakout({
+				member,
+				category,
+				channels: [room],
+				voiceChannel,
+			});
+
+			expect(result.ok).toBe(false);
+			expect(result.reason).toContain('FGD Sessions');
+			expect(result.reason).toContain('breakout-room-1');
+			expect(result.reason).toContain('Main Room');
+			expect(result.reason).toContain("I'm missing 3 permissions:");
+		});
+
+		it('uses singular phrasing for a lone failure', () => {
+			const me = { id: 'bot-1' };
+			const category = {
+				name: 'FGD Sessions',
+				permissionsFor: () => ({ has: () => false }),
+			} as unknown as CategoryChannel;
+
+			const member = {
+				id: 'owner-999',
+				guild: { id: 'guild-1', ownerId: 'owner-999', members: { me } },
+				roles: { cache: { has: () => false } },
+				permissions: { has: () => true },
+			} as unknown as GuildMember;
+
+			const result = preflightBreakout({ member, category });
+
+			expect(result.ok).toBe(false);
+			expect(result.reason).toContain("I'm missing a permission:");
+			expect(result.reason).not.toContain('breakout room');
+		});
+
+		it('skips null entries in the channels list', () => {
+			const me = { id: 'bot-1' };
+			const member = {
+				id: 'owner-999',
+				guild: { id: 'guild-1', ownerId: 'owner-999', members: { me } },
+				roles: { cache: { has: () => false } },
+				permissions: { has: () => true },
+			} as unknown as GuildMember;
+
+			const result = preflightBreakout({ member, channels: [null, undefined] });
+			expect(result.ok).toBe(true);
 		});
 
 		it('succeeds for owner bypass', () => {

@@ -64,8 +64,9 @@ interface PersistedSession {
 	/**
 	 * Category the session's breakout rooms were created in, used to scope the
 	 * name-pattern fallback so rooms elsewhere in the guild are never adopted.
+	 * Explicitly null for root-level rooms without a category.
 	 */
-	categoryId?: string;
+	categoryId?: string | null;
 }
 
 /**
@@ -473,14 +474,14 @@ export async function getCompletedSteps(
 export async function storeRoomIds(
 	guildId: string,
 	roomIds: string[],
-	categoryId?: string,
+	categoryId?: string | null,
 ): Promise<void> {
 	await initializeState();
 	const guildState = getGuildState(guildId);
 	guildState.session = {
 		...guildState.session,
 		roomIds,
-		...(categoryId === undefined ? {} : { categoryId }),
+		...(categoryId !== undefined ? { categoryId } : {}),
 	};
 	logger.debug(
 		{ guildId, count: roomIds.length, categoryId },
@@ -492,7 +493,7 @@ export async function storeRoomIds(
 /**
  * Gets the category the guild's breakout rooms were created in, if recorded.
  */
-export function getSessionCategoryId(guild: Guild): string | undefined {
+export function getSessionCategoryId(guild: Guild): string | null | undefined {
 	return inMemoryState[guild.id]?.session?.categoryId;
 }
 

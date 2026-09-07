@@ -14,13 +14,14 @@ export const BREAKOUT_ROOM_NAME_PREFIX = 'breakout-room-';
  * category confines the guess to where this session's rooms actually live.
  *
  * @param guild The guild to search.
- * @param categoryId Restrict results to this category. When undefined (a
- *   session recorded before category tracking, or rooms created at guild root)
- *   the scan falls back to the whole guild.
+ * @param categoryId Restrict results to this category. When null, only
+ *   root-level channels (no category) are matched. When undefined (a legacy
+ *   session recorded before category tracking), the scan falls back to the
+ *   whole guild.
  */
 export function findRoomsByNamePattern(
 	guild: Guild,
-	categoryId?: string,
+	categoryId?: string | null,
 ): VoiceChannel[] {
 	return Array.from(
 		guild.channels.cache
@@ -28,7 +29,11 @@ export function findRoomsByNamePattern(
 				(channel): channel is VoiceChannel =>
 					channel.type === ChannelType.GuildVoice &&
 					channel.name.startsWith(BREAKOUT_ROOM_NAME_PREFIX) &&
-					(categoryId === undefined || channel.parentId === categoryId),
+					(categoryId === undefined
+						? true
+						: categoryId === null
+							? channel.parentId === null
+							: channel.parentId === categoryId),
 			)
 			.values(),
 	);

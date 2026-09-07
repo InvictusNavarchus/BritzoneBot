@@ -54,6 +54,15 @@ describe('findRoomsByNamePattern', () => {
 		expect(rooms.map((r) => r.id)).toEqual(['a1', 'a2', 'b1']);
 	});
 
+	it('matches only root-level channels when categoryId is null', () => {
+		const rootGuild = guildWithChannels([
+			{ id: 'root1', name: 'breakout-room-1', parentId: null },
+			{ id: 'cat1', name: 'breakout-room-1', parentId: 'cat-session' },
+		]);
+		const rooms = findRoomsByNamePattern(rootGuild, null);
+		expect(rooms.map((r) => r.id)).toEqual(['root1']);
+	});
+
 	it('ignores non-voice channels and channels outside the naming pattern', () => {
 		const rooms = findRoomsByNamePattern(guild);
 		expect(rooms.map((r) => r.id)).not.toContain('c1');

@@ -187,8 +187,12 @@ const handleShutdown = async (signal: string) => {
 	try {
 		// Neutralise open Confirm/Cancel prompts first: their collectors die with
 		// this process, and a click afterwards would only produce Discord's bare
-		// "This interaction failed".
-		await disableActivePrompts();
+		// "This interaction failed". Bounded by a short timeout so stalled Discord
+		// edits cannot prevent flushing state or releasing locks before exit.
+		await Promise.race([
+			disableActivePrompts(),
+			new Promise((resolve) => setTimeout(resolve, 1500)),
+		]);
 
 		await releaseDistributedLock();
 		client.destroy();

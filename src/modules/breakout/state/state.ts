@@ -205,7 +205,22 @@ async function loadState(): Promise<void> {
 	}
 }
 
+/**
+ * Window over which rapid progress updates are coalesced into one disk write.
+ *
+ * Short enough that a crash loses at most a fraction of a second of
+ * checkpoints, and every checkpoint it could lose guards work that is safe to
+ * repeat on resume.
+ */
+const SAVE_DEBOUNCE_MS = 250;
+let pendingSaveTimer: NodeJS.Timeout | null = null;
+
 async function saveState(): Promise<void> {
+	if (pendingSaveTimer) {
+		clearTimeout(pendingSaveTimer);
+		pendingSaveTimer = null;
+	}
+
 	const nextSave = saveQueue.then(async () => {
 		try {
 			await initializeState();
@@ -223,6 +238,26 @@ async function saveState(): Promise<void> {
 		logger.error({ err }, '❌ Save queue encountered an unhandled rejection');
 	});
 	return nextSave;
+}
+
+/**
+ * Requests a save without waiting for it, coalescing bursts.
+ *
+ * Used for progress checkpoints, which arrive once per member moved: a
+ * 100-person distribution otherwise serialised and rewrote the entire state
+ * file a hundred times.
+ */
+function scheduleSave(): void {
+	if (pendingSaveTimer) return;
+
+	pendingSaveTimer = setTimeout(() => {
+		pendingSaveTimer = null;
+		void saveState();
+	}, SAVE_DEBOUNCE_MS);
+
+	// Never hold the process open for a pending checkpoint; graceful shutdown
+	// calls flushState, which writes synchronously with respect to the caller.
+	pendingSaveTimer.unref?.();
 }
 
 /**
@@ -252,6 +287,18 @@ export async function startOperation(
 	await saveState();
 }
 
+export interface UpdateProgressOptions {
+	/**
+	 * Write to disk before resolving instead of coalescing with nearby updates.
+	 *
+	 * Set this for checkpoints guarding work that is *not* safe to repeat — room
+	 * creation, for instance, where losing the checkpoint means resume creates a
+	 * duplicate channel. Moves and deletes are idempotent enough to ride the
+	 * debounce.
+	 */
+	immediate?: boolean;
+}
+
 /**
  * Update progress for a step
  */
@@ -259,6 +306,7 @@ export async function updateProgress(
 	guildId: string,
 	step: string,
 	data: Record<string, unknown> = {},
+	options: UpdateProgressOptions = {},
 ): Promise<boolean> {
 	await initializeState();
 	const guildState = inMemoryState[guildId];
@@ -277,7 +325,12 @@ export async function updateProgress(
 		...data,
 	};
 	logger.debug({ guildId, step }, '🔄 Updated operation progress');
-	await saveState();
+
+	if (options.immediate) {
+		await saveState();
+	} else {
+		scheduleSave();
+	}
 	return true;
 }
 
@@ -530,5 +583,10 @@ export async function getAllGuildStates(): Promise<Record<string, GuildState>> {
  * Ensures all pending state save operations are flushed to disk
  */
 export async function flushState(): Promise<void> {
+	// Force any debounced checkpoint out before draining the queue, otherwise a
+	// shutdown could drop the last few progress updates.
+	if (pendingSaveTimer) {
+		await saveState();
+	}
 	await saveQueue;
 }

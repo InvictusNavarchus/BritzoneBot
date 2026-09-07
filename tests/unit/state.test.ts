@@ -175,6 +175,63 @@ describe('StateManager (state.ts)', () => {
 		});
 	});
 
+	describe('progress checkpoint durability', () => {
+		it('coalesces a burst of progress updates into a single disk write', async () => {
+			const guildId = 'guild-burst';
+			await startOperation(guildId, 'distribute', {});
+
+			for (let i = 0; i < 50; i++) {
+				await updateProgress(guildId, `member_moved_${i}`);
+			}
+
+			// Debounced: nothing on disk yet beyond the startOperation write.
+			const beforeFlush = JSON.parse(
+				await fs.readFile(process.env.STATE_FILE as string, 'utf8'),
+			);
+			expect(
+				Object.keys(beforeFlush[guildId].currentOperation.progress.steps),
+			).toHaveLength(0);
+
+			await flushState();
+
+			const afterFlush = JSON.parse(
+				await fs.readFile(process.env.STATE_FILE as string, 'utf8'),
+			);
+			expect(
+				Object.keys(afterFlush[guildId].currentOperation.progress.steps),
+			).toHaveLength(50);
+		});
+
+		it('writes immediately for checkpoints marked immediate', async () => {
+			const guildId = 'guild-immediate';
+			await startOperation(guildId, 'create', { numRooms: 1 });
+			await updateProgress(
+				guildId,
+				'create_room_1',
+				{ channelId: 'c1' },
+				{ immediate: true },
+			);
+
+			const onDisk = JSON.parse(
+				await fs.readFile(process.env.STATE_FILE as string, 'utf8'),
+			);
+			expect(
+				onDisk[guildId].currentOperation.progress.steps.create_room_1.channelId,
+			).toBe('c1');
+		});
+
+		it('keeps debounced checkpoints readable in memory before they are flushed', async () => {
+			const guildId = 'guild-inmemory';
+			await startOperation(guildId, 'recall', {});
+			await updateProgress(guildId, 'room_recalled_r1', { movedCount: 4 });
+
+			// Resume logic reads through getCompletedSteps, which is served from
+			// memory, so the debounce must not change what a running operation sees.
+			const steps = await getCompletedSteps(guildId);
+			expect(steps.room_recalled_r1?.movedCount).toBe(4);
+		});
+	});
+
 	describe('operation history retention', () => {
 		it('archives completed operations without their step map', async () => {
 			const guildId = 'guild-history';

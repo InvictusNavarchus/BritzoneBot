@@ -150,9 +150,14 @@ export async function executeCreate(
 			try {
 				const createdChannel = await createRoom(interaction, roomName);
 				createdChannels.push(createdChannel);
-				await updateProgress(guildId, stepKey, {
-					channelId: createdChannel.id,
-				});
+				// Room creation is not idempotent: losing this checkpoint means a
+				// resume creates a duplicate channel, so it is written eagerly.
+				await updateProgress(
+					guildId,
+					stepKey,
+					{ channelId: createdChannel.id },
+					{ immediate: true },
+				);
 			} catch (error) {
 				log.error({ err: error, roomName }, `❌ Failed to create room`);
 				throw error;

@@ -4,18 +4,66 @@ import {
 	formatReminderMessage,
 	formatScheduleSummary,
 	formatTimerStatus,
+	getPresetDurations,
 	getTimerSchedule,
+	isPresetDuration,
+	MIN_CUSTOM_TIMER_MINUTES,
+	TIMER_PRESET_CHOICES,
 } from '@/modules/breakout/constants/timerPresets.js';
 import type { TimerData } from '@/modules/breakout/state/state.js';
 
 describe('timerPresets', () => {
 	describe('FGD_TIMER_PRESETS lookup table', () => {
-		it('contains defined reminder thresholds for 0.05 (3s), 30, 45, 60, and 90 minute presets', () => {
+		it('contains defined reminder thresholds for 0.05 (3s), 20, 30, 45, 60, and 90 minute presets', () => {
 			expect(FGD_TIMER_PRESETS[0.05]).toEqual([0.03, 0.015]);
+			expect(FGD_TIMER_PRESETS[20]).toEqual([10, 5]);
 			expect(FGD_TIMER_PRESETS[30]).toEqual([15, 5]);
 			expect(FGD_TIMER_PRESETS[45]).toEqual([22, 10, 3]);
 			expect(FGD_TIMER_PRESETS[60]).toEqual([30, 15, 5]);
 			expect(FGD_TIMER_PRESETS[90]).toEqual([45, 20, 5]);
+		});
+	});
+
+	describe('preset choices and validation', () => {
+		it('lists preset durations in ascending order, sub-minute preset first', () => {
+			expect(getPresetDurations()).toEqual([0.05, 20, 30, 45, 60, 90]);
+		});
+
+		it('accepts every preset duration regardless of the custom-duration floor', () => {
+			for (const minutes of getPresetDurations()) {
+				expect(isPresetDuration(minutes)).toBe(true);
+			}
+			// The 20m and 3s presets sit below the custom floor and must still pass.
+			expect(isPresetDuration(20)).toBe(true);
+			expect(20).toBeLessThan(MIN_CUSTOM_TIMER_MINUTES);
+			expect(isPresetDuration(0.05)).toBe(true);
+		});
+
+		it('rejects non-preset durations', () => {
+			expect(isPresetDuration(35)).toBe(false);
+			expect(isPresetDuration(25)).toBe(false);
+			expect(isPresetDuration(1)).toBe(false);
+		});
+
+		it('derives a slash-command choice for every preset, so the two cannot drift', () => {
+			expect(TIMER_PRESET_CHOICES).toHaveLength(
+				Object.keys(FGD_TIMER_PRESETS).length,
+			);
+
+			for (const choice of TIMER_PRESET_CHOICES) {
+				// Every advertised choice must survive the handler's own guard.
+				expect(isPresetDuration(Number.parseFloat(choice.value))).toBe(true);
+			}
+		});
+
+		it('labels presets from their reminder schedule, with an override for the test preset', () => {
+			const byValue = new Map(
+				TIMER_PRESET_CHOICES.map((c) => [c.value, c.name]),
+			);
+			expect(byValue.get('0.05')).toBe('3 seconds (Testing)');
+			expect(byValue.get('20')).toBe('20 minutes (Reminders at 10m, 5m)');
+			expect(byValue.get('45')).toBe('45 minutes (Reminders at 22m, 10m, 3m)');
+			expect(byValue.get('90')).toBe('90 minutes (Reminders at 45m, 20m, 5m)');
 		});
 	});
 

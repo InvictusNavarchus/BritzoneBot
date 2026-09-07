@@ -8,6 +8,10 @@ import { preflightBreakout } from '@/lib/discord/permission.js';
 import { replyOrEdit } from '@/lib/discord/response.js';
 import { logger } from '@/lib/logger.js';
 import {
+	MIN_CUSTOM_TIMER_MINUTES,
+	TIMER_PRESET_CHOICES,
+} from '@/modules/breakout/constants/timerPresets.js';
+import {
 	handleBroadcastCommand,
 	handleCreateCommand,
 	handleDeleteCommand,
@@ -125,22 +129,15 @@ const command: Command = {
 						.setName('minutes')
 						.setDescription('FGD timer duration preset')
 						.setRequired(false)
-						.addChoices(
-							{ name: '3 seconds (Testing)', value: '0.05' },
-							{ name: '20 minutes (Reminders at 10m, 5m)', value: '20' },
-							{ name: '30 minutes (Reminders at 15m, 5m)', value: '30' },
-							{ name: '45 minutes (Reminders at 22m, 10m, 3m)', value: '45' },
-							{ name: '60 minutes (Reminders at 30m, 15m, 5m)', value: '60' },
-							{ name: '90 minutes (Reminders at 45m, 20m, 5m)', value: '90' },
-						),
+						.addChoices(...TIMER_PRESET_CHOICES),
 				)
 				.addIntegerOption((option) =>
 					option
 						.setName('custom_minutes')
 						.setDescription(
-							'Custom FGD timer duration in minutes (minimum 30 minutes)',
+							`Custom FGD timer duration in minutes (minimum ${MIN_CUSTOM_TIMER_MINUTES} minutes)`,
 						)
-						.setMinValue(30)
+						.setMinValue(MIN_CUSTOM_TIMER_MINUTES)
 						.setRequired(false),
 				)
 				.addBooleanOption((option) =>

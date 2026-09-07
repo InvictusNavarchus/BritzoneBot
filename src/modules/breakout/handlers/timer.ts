@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger.js';
 import {
 	formatScheduleSummary,
 	getTimerSchedule,
+	isPresetDuration,
+	MIN_CUSTOM_TIMER_MINUTES,
 } from '@/modules/breakout/constants/timerPresets.js';
 import { monitorBreakoutTimer } from '@/modules/breakout/services/timer.js';
 import {
@@ -37,9 +39,9 @@ export async function handleTimerCommand(
 			let minutes: number | null = null;
 
 			if (customMinutesOption !== null) {
-				if (customMinutesOption < 30) {
+				if (customMinutesOption < MIN_CUSTOM_TIMER_MINUTES) {
 					await ctx.reply(
-						'⚠️ Custom timer duration must be at least 30 minutes.',
+						`⚠️ Custom timer duration must be at least ${MIN_CUSTOM_TIMER_MINUTES} minutes.`,
 					);
 					return;
 				}
@@ -50,13 +52,17 @@ export async function handleTimerCommand(
 
 			if (minutes === null || Number.isNaN(minutes) || minutes <= 0) {
 				await ctx.reply(
-					'⚠️ Please select a duration preset or provide a custom duration in minutes (minimum 30 minutes). Use `/breakout status` to check active session status.',
+					`⚠️ Please select a duration preset or provide a custom duration in minutes (minimum ${MIN_CUSTOM_TIMER_MINUTES} minutes). Use \`/breakout status\` to check active session status.`,
 				);
 				return;
 			}
 
-			if (minutes !== 0.05 && minutes < 30) {
-				await ctx.reply('⚠️ Timer duration must be at least 30 minutes.');
+			// Presets are advertised in the slash command, so any preset is valid
+			// regardless of length; only custom durations carry a floor.
+			if (!isPresetDuration(minutes) && minutes < MIN_CUSTOM_TIMER_MINUTES) {
+				await ctx.reply(
+					`⚠️ Timer duration must be at least ${MIN_CUSTOM_TIMER_MINUTES} minutes.`,
+				);
 				return;
 			}
 

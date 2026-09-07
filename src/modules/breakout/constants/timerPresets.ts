@@ -16,6 +16,64 @@ export const FGD_TIMER_PRESETS: Record<PresetDuration, number[]> = {
 };
 
 /**
+ * Shortest duration accepted for a non-preset (custom) timer, in minutes.
+ * Presets are exempt: a preset is advertised in the slash command, so it is
+ * accepted whatever its length.
+ */
+export const MIN_CUSTOM_TIMER_MINUTES = 30;
+
+/**
+ * Choice labels that cannot be derived from the reminder schedule.
+ */
+const PRESET_LABEL_OVERRIDES: Partial<Record<PresetDuration, string>> = {
+	0.05: '3 seconds (Testing)',
+};
+
+/**
+ * Returns whether a duration is one of the advertised presets.
+ */
+export function isPresetDuration(minutes: number): minutes is PresetDuration {
+	return minutes in FGD_TIMER_PRESETS;
+}
+
+/**
+ * Preset durations in ascending order.
+ *
+ * `Object.keys` orders integer-like keys before the rest, which would put the
+ * sub-minute preset last, so the numeric sort is explicit.
+ */
+export function getPresetDurations(): PresetDuration[] {
+	return Object.keys(FGD_TIMER_PRESETS)
+		.map(Number)
+		.sort((a, b) => a - b) as PresetDuration[];
+}
+
+/**
+ * Builds the human-readable label for a preset's slash-command choice.
+ */
+function formatPresetChoiceName(minutes: PresetDuration): string {
+	const override = PRESET_LABEL_OVERRIDES[minutes];
+	if (override) return override;
+
+	const thresholds = FGD_TIMER_PRESETS[minutes].map((m) => `${m}m`).join(', ');
+	return `${minutes} minutes (Reminders at ${thresholds})`;
+}
+
+/**
+ * Slash-command choices for the timer duration option, derived from
+ * {@link FGD_TIMER_PRESETS}.
+ *
+ * Generating these from the lookup table is what keeps the advertised choices
+ * and the accepted durations from drifting apart: adding a preset row adds the
+ * choice and widens validation in one step.
+ */
+export const TIMER_PRESET_CHOICES: { name: string; value: string }[] =
+	getPresetDurations().map((minutes) => ({
+		name: formatPresetChoiceName(minutes),
+		value: String(minutes),
+	}));
+
+/**
  * Generates a concise reminder message for participants.
  */
 export function formatReminderMessage(remainingMinutes: number): string {

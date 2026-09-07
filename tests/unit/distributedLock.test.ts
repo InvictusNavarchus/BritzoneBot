@@ -195,7 +195,11 @@ describe('Distributed Instance Lock (distributedLock.ts)', () => {
 			try {
 				await distributedLock.acquireDistributedLock(client, 0);
 			} finally {
-				process.env.NODE_ENV = originalEnv;
+				if (originalEnv === undefined) {
+					delete process.env.NODE_ENV;
+				} else {
+					process.env.NODE_ENV = originalEnv;
+				}
 			}
 
 			expect(loadConfigSpy).not.toHaveBeenCalled();

@@ -173,6 +173,7 @@ BritzoneBot offers a suite of slash commands to manage breakout rooms. All break
 | `/breakout`  | `broadcast`    | Broadcasts a message to all active breakout rooms.                 | `message` *(String, Required)* – The message content. |
 | `/breakout`  | `send-message` | Sends a message to a specific voice channel's text chat.           | `channel` *(Voice Channel, Required)* – Target channel. |
 |              |                |                                                                    | `message` *(String, Required)* – The message content. |
+| `/breakout`  | `reset`        | Clears a stuck operation record so other subcommands can run again. Rooms, members and timers are left untouched. | None |
 
 ### 🛠️ Utility Commands
 
@@ -191,10 +192,27 @@ Every breakout operation (`create`, `distribute`, `recall`, `delete`) is tracked
 
 1. The state file records which steps have already completed.
 2. Re-running the same subcommand **resumes** from the last checkpoint.
-3. Running a *different* breakout subcommand while one is in progress is blocked with an explanatory message.
-4. Completed operations are moved to an in-memory history and the active operation slot is cleared.
+3. Running a *different* room-mutating subcommand (`create`, `distribute`, `recall`, `delete`, `timer`) while one is in progress is blocked with an explanatory message.
+4. Completed operations are moved to history — without their step map — and the active operation slot is cleared.
 
 This ensures no duplicate channels are created, no users are moved twice, and no rooms are double-deleted.
+
+### Getting unstuck
+
+An operation that is interrupted and never resumed would otherwise hold the
+lock indefinitely. Three things prevent that from stranding a session:
+
+- **Non-mutating subcommands are never blocked.** `status`, `timer-cancel`,
+  `broadcast`, `send-message` and `reset` run regardless of what is in
+  progress, so the tools you need to diagnose and recover stay available.
+- **Abandoned operations expire.** An operation that records no checkpoint for
+  10 minutes is discarded automatically on the next command. Staleness is
+  measured from the last checkpoint, so a slow operation that is still making
+  progress is never cut short.
+- **`/breakout reset` clears it immediately** when you do not want to wait. It
+  removes only the operation record — rooms, members and any active timer are
+  untouched — so it is safe to run when unsure. Follow it with
+  `/breakout status` to see what actually exists.
 
 ## 📋 Distribution Preview
 

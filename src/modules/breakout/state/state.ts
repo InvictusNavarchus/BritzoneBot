@@ -17,7 +17,8 @@ export type BreakoutSubcommand =
 	| 'timer-cancel'
 	| 'broadcast'
 	| 'send-message'
-	| 'status';
+	| 'status'
+	| 'reset';
 
 /**
  * Single operation step data

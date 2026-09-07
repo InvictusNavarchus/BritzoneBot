@@ -17,6 +17,7 @@ import {
 	handleDeleteCommand,
 	handleDistributeCommand,
 	handleRecallCommand,
+	handleResetCommand,
 	handleSendMessageCommand,
 	handleStatusCommand,
 	handleTimerCancelCommand,
@@ -47,6 +48,8 @@ const LOCK_EXEMPT_SUBCOMMANDS: ReadonlySet<BreakoutSubcommand> = new Set([
 	'timer-cancel',
 	'broadcast',
 	'send-message',
+	// The escape hatch itself, which the lock must never gate.
+	'reset',
 ]);
 
 const subcommandHandlers: Record<
@@ -62,6 +65,7 @@ const subcommandHandlers: Record<
 	broadcast: handleBroadcastCommand,
 	'send-message': handleSendMessageCommand,
 	status: handleStatusCommand,
+	reset: handleResetCommand,
 };
 
 const command: Command = {
@@ -191,6 +195,14 @@ const command: Command = {
 				.setName('status')
 				.setDescription('Display current breakout rooms and timer status'),
 		)
+		// Reset subcommand
+		.addSubcommand((subcommand) =>
+			subcommand
+				.setName('reset')
+				.setDescription(
+					'Clear a stuck breakout operation (rooms and timers are left untouched)',
+				),
+		)
 		// Broadcast subcommand
 		.addSubcommand((subcommand) =>
 			subcommand
@@ -286,7 +298,7 @@ const command: Command = {
 						'⚠️ Found interrupted operation, but user requested different type',
 					);
 					await replyOrEdit(interaction, {
-						content: `There is an interrupted '${currentOp.type}' operation in progress. Re-run \`/breakout ${currentOp.type}\` to resume it, or wait ${OPERATION_STALE_AFTER_MS / 60_000} minutes without progress for it to expire on its own.`,
+						content: `There is an interrupted '${currentOp.type}' operation in progress. Re-run \`/breakout ${currentOp.type}\` to resume it, run \`/breakout reset\` to clear it, or wait ${OPERATION_STALE_AFTER_MS / 60_000} minutes without progress for it to expire on its own.`,
 						ephemeral: true,
 					});
 					return;

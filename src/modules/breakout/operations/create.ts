@@ -49,7 +49,7 @@ export async function executeCreate(
 	// different number here produced a mixed result: rooms from the first plan
 	// reused under step keys belonging to the second.
 	const resumedNumRooms =
-		isResuming && typeof currentOp.params.numRooms === 'number'
+		isResuming && typeof currentOp.params?.numRooms === 'number'
 			? currentOp.params.numRooms
 			: undefined;
 	const targetRooms = resumedNumRooms ?? numRooms;

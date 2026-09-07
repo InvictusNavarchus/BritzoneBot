@@ -239,7 +239,13 @@ async function runDistributionCollector(params: {
 				return;
 			}
 
-			if (reason !== 'confirmed' && reason !== 'cancelled') {
+			// For 'confirmed', executeDistribute is actively running in the
+			// collect handler and will resolve this promise upon completion.
+			if (reason === 'confirmed') {
+				return;
+			}
+
+			if (reason !== 'cancelled') {
 				log.warn('⏱️ Distribution preview confirmation timed out');
 				const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
 					confirmButton.setDisabled(true),

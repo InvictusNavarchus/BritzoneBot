@@ -21,6 +21,7 @@ import {
 	storeRoomIds,
 	updateProgress,
 } from '@/modules/breakout/state/state.js';
+import { BREAKOUT_ROOM_NAME_PREFIX } from '@/modules/breakout/utils/rooms.js';
 import type { OperationResult } from '@/types/index.js';
 
 /**
@@ -132,7 +133,7 @@ export async function executeCreate(
 
 		// Create each breakout room with checkpointing
 		for (let i = 1; i <= targetRooms; i++) {
-			const roomName = `breakout-room-${i}`;
+			const roomName = `${BREAKOUT_ROOM_NAME_PREFIX}${i}`;
 			const stepKey = `create_room_${i}`;
 
 			// Check if this step was already completed in a previous attempt

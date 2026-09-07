@@ -122,6 +122,26 @@ describe('timerPresets', () => {
 			expect(schedule75).toEqual([30, 10, 5]);
 		});
 
+		it('drops preset thresholds that do not fit inside the session', () => {
+			// A threshold at or above the duration would fire immediately as a
+			// missed-while-offline catch-up, spamming every room at timer start.
+			const original = FGD_TIMER_PRESETS[30];
+			try {
+				(FGD_TIMER_PRESETS as Record<number, number[]>)[30] = [
+					50, 30, 15, 5, 0,
+				];
+				expect(getTimerSchedule(30)).toEqual([15, 5]);
+			} finally {
+				(FGD_TIMER_PRESETS as Record<number, number[]>)[30] = original;
+			}
+		});
+
+		it('does not hand out the preset array itself for callers to mutate', () => {
+			const schedule = getTimerSchedule(45);
+			schedule.push(999);
+			expect(FGD_TIMER_PRESETS[45]).toEqual([22, 10, 3]);
+		});
+
 		it('returns empty schedule for non-preset durations under 30 minutes', () => {
 			expect(getTimerSchedule(25)).toEqual([]);
 			expect(getTimerSchedule(15)).toEqual([]);

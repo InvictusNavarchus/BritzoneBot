@@ -113,8 +113,15 @@ export function formatReminderMessage(remainingMinutes: number): string {
  * Durations under 30 minutes (non-preset) return an empty schedule.
  */
 export function getTimerSchedule(totalMinutes: number): number[] {
-	if (totalMinutes in FGD_TIMER_PRESETS) {
-		return FGD_TIMER_PRESETS[totalMinutes as PresetDuration];
+	if (isPresetDuration(totalMinutes)) {
+		// Copy, and drop thresholds that do not fit inside the session. A
+		// threshold at or above the total duration lands in the past the moment
+		// the timer starts, and monitorBreakoutTimer treats a past reminder as
+		// missed-while-offline and fires it immediately — a mistyped preset row
+		// would otherwise dump its whole schedule into every room at once.
+		return FGD_TIMER_PRESETS[totalMinutes].filter(
+			(remaining) => remaining > 0 && remaining < totalMinutes,
+		);
 	}
 
 	if (totalMinutes < 30) {

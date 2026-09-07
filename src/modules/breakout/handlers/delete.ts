@@ -57,6 +57,7 @@ export async function handleDeleteCommand(
 					content: `⚠️ ${totalMembers} member(s) are still in breakout rooms and no main room is configured. Deleting will disconnect them from voice.`,
 					confirmLabel: `Delete and disconnect ${totalMembers} member(s)`,
 					loadingContent: '⏳ Deleting breakout rooms...',
+					onInteractionCollected: ctx.restartTimeout,
 					onConfirm: async () => {
 						const result = await executeDelete(interaction);
 						if (result.success) {

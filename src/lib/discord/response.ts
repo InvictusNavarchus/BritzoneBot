@@ -149,6 +149,20 @@ export interface InteractionContext<
 	sendPublic: (
 		options: string | MessagePayload | InteractionReplyOptions,
 	) => Promise<Message | null>;
+
+	/**
+	 * Restarts the handler's timeout budget from now.
+	 *
+	 * The budget is meant to bound the bot's *own* work, but it also covered
+	 * time spent waiting on a human: a distribute handler's 120s allowance
+	 * included the 60s the confirmation collector sits idle, so a large room
+	 * confirmed late could trip the timeout, tell the user it failed, and then
+	 * carry on moving members with a second editReply racing the error message.
+	 *
+	 * Call this once the wait is over — after a confirmation is collected — so
+	 * the work that follows is measured on its own.
+	 */
+	restartTimeout: () => void;
 }
 
 /**
@@ -179,6 +193,48 @@ function getErrorCode(error: Error): string | number | undefined {
 	return 'code' in error
 		? (error as Error & { code?: string | number }).code
 		: undefined;
+}
+
+/**
+ * A restartable timeout, used to bound handler execution.
+ */
+interface TimeoutBudget {
+	/** Rejects with a {@link TimeoutError} once the budget elapses. */
+	readonly promise: Promise<never>;
+	/** Discards the elapsed time and starts the budget again from now. */
+	restart(): void;
+	/** Cancels the pending timer. */
+	clear(): void;
+}
+
+/**
+ * Creates a timeout that can be restarted while the task is still running.
+ */
+function createTimeoutBudget(
+	timeoutMs: number,
+	timeoutErrorMessage: string,
+): TimeoutBudget {
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	let arm: () => void = () => {};
+
+	const promise = new Promise<never>((_, reject) => {
+		arm = () => {
+			if (timeoutId !== undefined) clearTimeout(timeoutId);
+			timeoutId = setTimeout(
+				() => reject(new TimeoutError(timeoutErrorMessage)),
+				timeoutMs,
+			);
+		};
+		arm();
+	});
+
+	return {
+		promise,
+		restart: () => arm(),
+		clear: () => {
+			if (timeoutId !== undefined) clearTimeout(timeoutId);
+		},
+	};
 }
 
 /**
@@ -260,7 +316,11 @@ async function safeDeferReply(
  */
 function createInteractionContext<
 	T extends RepliableInteraction | CommandInteraction,
->(interaction: T, ephemeral: boolean): InteractionContext<T> {
+>(
+	interaction: T,
+	ephemeral: boolean,
+	restartTimeout: () => void,
+): InteractionContext<T> {
 	return {
 		interaction,
 		get isDeferred() {
@@ -289,6 +349,7 @@ function createInteractionContext<
 		sendPublic: (content) => {
 			return sendPublicAnnouncement(interaction, content);
 		},
+		restartTimeout,
 	};
 }
 
@@ -361,13 +422,21 @@ export async function handleInteraction<
 			if (!deferred) return false;
 		}
 
-		// 2. Build context and execute handler with timeout protection
-		const ctx = createInteractionContext(interaction, ephemeral);
-		await executeWithTimeout(
-			() => handler(ctx),
+		// 2. Build context and execute handler with restartable timeout protection
+		const budget = createTimeoutBudget(
 			handlerTimeoutMs,
 			'Handler execution timeout',
 		);
+		const ctx = createInteractionContext(
+			interaction,
+			ephemeral,
+			budget.restart,
+		);
+		try {
+			await Promise.race([handler(ctx), budget.promise]);
+		} finally {
+			budget.clear();
+		}
 		return true;
 	} catch (error) {
 		// 3. Contain failure, log, and send fallback notification if enabled

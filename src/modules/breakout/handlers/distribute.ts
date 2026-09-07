@@ -121,6 +121,10 @@ async function runDistributionCollector(params: {
 					collector.stop('confirmed');
 					log.info('✅ Distribution confirmed by user');
 
+					// The wait for a click is over; give the move loop the full
+					// budget rather than whatever the user left of it.
+					ctx.restartTimeout();
+
 					const totalMembersToMove = Object.values(distribution).reduce(
 						(sum, users) => sum + users.length,
 						0,

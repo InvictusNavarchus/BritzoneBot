@@ -17,6 +17,14 @@ export interface ConfirmActionOptions {
 	onConfirm: () => Promise<void>;
 	onCancel?: () => Promise<void>;
 	timeMs?: number;
+	/**
+	 * Called once the user has answered, before `onConfirm` runs.
+	 *
+	 * Callers running inside `handleInteraction` pass `ctx.restartTimeout` here,
+	 * so the time this prompt spent idle is not charged against the work that
+	 * follows it.
+	 */
+	onInteractionCollected?: () => void;
 }
 
 /**
@@ -35,6 +43,7 @@ export async function confirmAction(
 		onConfirm,
 		onCancel,
 		timeMs = 60_000,
+		onInteractionCollected,
 	} = options;
 
 	const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -84,6 +93,7 @@ export async function confirmAction(
 
 				if (i.customId === 'confirm_action') {
 					collector.stop('confirmed');
+					onInteractionCollected?.();
 					await i.update({
 						content: loadingContent,
 						components: [],

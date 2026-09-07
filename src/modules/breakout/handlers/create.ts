@@ -62,6 +62,7 @@ export async function handleCreateCommand(
 					content: `⚠️ ${totalMembers} member(s) are still in existing breakout rooms and no main room is configured. Creating new rooms will disconnect them from voice.`,
 					confirmLabel: `Recreate rooms and disconnect ${totalMembers} member(s)`,
 					loadingContent: '⏳ Creating breakout rooms...',
+					onInteractionCollected: ctx.restartTimeout,
 					onConfirm: async () => {
 						const result = await executeCreate(interaction, numRooms);
 						if (result.success) {

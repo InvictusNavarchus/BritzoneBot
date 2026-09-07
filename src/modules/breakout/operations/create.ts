@@ -39,18 +39,38 @@ export async function executeCreate(
 	}
 
 	const operationType = 'create';
-	const log = logger.child({
-		operation: operationType,
-		guildId,
-		numRooms,
-	});
 
 	// Check if we are resuming an interrupted operation
 	const currentOp = await getCurrentOperation(guildId);
 	const isResuming = currentOp?.type === operationType;
 
+	// On resume the original room count wins. The recorded checkpoints are keyed
+	// `create_room_1..N` against the plan already in flight, so honouring a
+	// different number here produced a mixed result: rooms from the first plan
+	// reused under step keys belonging to the second.
+	const resumedNumRooms =
+		isResuming && typeof currentOp.params.numRooms === 'number'
+			? currentOp.params.numRooms
+			: undefined;
+	const targetRooms = resumedNumRooms ?? numRooms;
+	const countOverridden =
+		resumedNumRooms !== undefined && resumedNumRooms !== numRooms;
+
+	const log = logger.child({
+		operation: operationType,
+		guildId,
+		numRooms: targetRooms,
+		requestedNumRooms: numRooms,
+	});
+
 	try {
 		if (isResuming) {
+			if (countOverridden) {
+				log.warn(
+					{ resumedNumRooms, requestedNumRooms: numRooms },
+					'⚠️ Resuming create with the original room count, ignoring the requested one',
+				);
+			}
 			log.info(`🔄 Resuming create operation`);
 		} else {
 			// Check for existing breakout rooms and auto-reconcile
@@ -102,7 +122,7 @@ export async function executeCreate(
 			}
 
 			// Start new operation
-			await startOperation(guildId, operationType, { numRooms });
+			await startOperation(guildId, operationType, { numRooms: targetRooms });
 		}
 
 		const createdChannels: VoiceChannel[] = [];
@@ -111,7 +131,7 @@ export async function executeCreate(
 		const steps = await getCompletedSteps(guildId);
 
 		// Create each breakout room with checkpointing
-		for (let i = 1; i <= numRooms; i++) {
+		for (let i = 1; i <= targetRooms; i++) {
 			const roomName = `breakout-room-${i}`;
 			const stepKey = `create_room_${i}`;
 
@@ -180,11 +200,15 @@ export async function executeCreate(
 		const hasParent = Boolean(
 			cmdChannel && 'parent' in cmdChannel && cmdChannel.parent,
 		);
+		const resumeNote = countOverridden
+			? `\n⚠️ Resumed the interrupted create operation, which was for ${targetRooms} room(s), so your request for ${numRooms} was not applied. Run \`/breakout create\` again now that it has finished.`
+			: '';
+
 		return {
 			success: true,
-			message: `Successfully created ${numRooms} breakout voice channels${
+			message: `Successfully created ${targetRooms} breakout voice channels${
 				hasParent ? ' in the same category' : ''
-			}!`,
+			}!${resumeNote}`,
 		};
 	} catch (error) {
 		// Log using the scoped logger to preserve context
